@@ -21,6 +21,21 @@ over master blindly; they will be ported file-by-file onto this branch.
 Local snapshot location (owner's Mac mini):
 /Users/weiwei/AI/EasyColab  (plus backups/v1.0.2_working_backup)
 
+Owner clarification (2026-11-11): the local changes were minor, in
+two areas only, and only one is worth porting:
+
+1. Google Drive mount experiments for model weights - DISCARD.
+   Conclusion already reached by testing: even when mounting works,
+   Drive reads at ~100 MB/s and weights still have to be copied to
+   local disk, which is slower than simply re-downloading to local
+   disk (~700 MB/s). This fork follows the re-download approach.
+2. A prompt toolbar in the video-generation UI - PORT THIS.
+   Located in the legacy monolith around the "Cinema Prompt & Lens
+   Workbench" / master cinema-camera preset tabs (legacy
+   EasyColabStudio.swift, roughly lines 8240-8700). No equivalent
+   exists in current upstream Sources/. Porting target:
+   macos_app/Sources/MainStudioView+Workspace.swift.
+
 ## Planned work on this branch
 
 - Port the local Mac customisations onto the current upstream structure.
