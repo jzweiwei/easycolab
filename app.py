@@ -4151,7 +4151,15 @@ def load_model_to_vram_core(
                     ),
                     vram_limit=vram_limit,
                 )
-                _enable_high_vram_optimizations(new_pipe, total_vram_gb=total_vram_gb, preload_vram=True)
+                # 不预热 text_encoder/dit: 二者合计约 133GB, 全量预热会把 96GB 显存塞满,
+                # 推理无激活余量直接 OOM (2026-11-11 真机实测)。照官方低显存例走流式换入,
+                # 只预热 pdd_heads/vae 小件。视频版分支同样以 skip_preload_attrs 排除 dit。
+                _enable_high_vram_optimizations(
+                    new_pipe,
+                    total_vram_gb=total_vram_gb,
+                    preload_vram=True,
+                    skip_preload_attrs=("text_encoder", "dit"),
+                )
                 mode_label = f"{spec['name']} · BF16 · 6步蒸馏"
 
             elif pipeline_arch == "qwen_image_21":
