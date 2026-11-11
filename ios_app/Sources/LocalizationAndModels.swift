@@ -497,6 +497,45 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
             ]
     ),
     OpenModelSpec(
+        id: "minimax_h3_image",
+        nameZh: "MiniMax-H3-Image",
+        nameEn: "MiniMax-H3-Image",
+        shortTitleZh: "H3 原生生图",
+        shortTitleEn: "H3-Image",
+        repoId: "MiniMaxAI/MiniMax-H3-Image",
+        badgeZh: "6 步蒸馏 · 新增约 68.6 GB",
+        badgeEn: "6-Step Distilled · +68.6 GB New",
+        summaryZh: "H3 家族文生图与改图合一，原生直出最高约 1600 万像素；与 H3 视频共用同一文本编码器，只需另下生图 DiT 与 VAE",
+        summaryEn: "H3-family text-to-image & editing in one, native output up to ~16 MP; shares the H3 video text encoder — only the image DiT & VAE are new downloads",
+        approxSizeGB: 68.6,
+        icon: "sparkles.rectangle.stack",
+        modality: .image,
+        defaultSteps: 6,
+        modes: [
+            TaskModeItem(
+                id: "t2i",
+                titleZh: "原生文生图",
+                titleEn: "Native Text-to-Image",
+                subtitleZh: "6 步蒸馏极速出图，画幅预设 4MP / 8MP / 16MP 原生直出",
+                subtitleEn: "6-step distilled generation with 4MP / 8MP / 16MP native presets",
+                icon: "photo.artframe"
+            ),
+            TaskModeItem(
+                id: "i2i_edit",
+                titleZh: "参考图改图",
+                titleEn: "Reference Image Edit",
+                subtitleZh: "从相册选参考图，用自然语言换背景、改局部或融合主体",
+                subtitleEn: "Pick a reference photo and edit regions, background or subjects via natural language",
+                icon: "wand.and.rays"
+            )
+        ],
+        defaultFiles: (1...12).map { ModelFileItem(name: String(format: "transformer/model-%05d-of-00012.safetensors", $0), desc: "生图 DiT 主干 BF16 \($0)/12", exists: false, size_gb: 0) }
+            + [
+                ModelFileItem(name: "vae/diffusion_pytorch_model.safetensors", desc: "图像 VAE (2.3 GB)", exists: false, size_gb: 0),
+                ModelFileItem(name: "pdd_fused_heads.safetensors", desc: "6 步蒸馏逐步输出头 (12 MB)", exists: false, size_gb: 0)
+            ]
+    ),
+    OpenModelSpec(
         id: "comfyui_studio",
         nameZh: "ComfyUI 节点工作台",
         nameEn: "ComfyUI Node Studio",
@@ -664,6 +703,18 @@ let IMAGE_RESOLUTIONS: [ResolutionOption] = [
     ResolutionOption(id: "i_1024_1024", labelZh: "1024 × 1024 (1:1 超清方图)", labelEn: "1024 × 1024 (1:1 Square HD)", width: 1024, height: 1024),
     ResolutionOption(id: "i_1344_768", labelZh: "1344 × 768 (16:9 电影横幅)", labelEn: "1344 × 768 (16:9 Cinematic Widescreen)", width: 1344, height: 768),
     ResolutionOption(id: "i_1536_1024", labelZh: "1536 × 1024 (3:2 单反摄影)", labelEn: "1536 × 1024 (3:2 DSLR Photo)", width: 1536, height: 1024)
+]
+
+// MiniMax-H3-Image native output presets (4MP / 8MP / 16MP tiers, all dimensions multiples of 32)
+let H3_IMAGE_RESOLUTIONS: [ResolutionOption] = [
+    ResolutionOption(id: "h3_4mp_2048_2048", labelZh: "2048 × 2048 (1:1 · 4MP 方图)", labelEn: "2048 × 2048 (1:1 · 4MP Square)", width: 2048, height: 2048),
+    ResolutionOption(id: "h3_4mp_2688_1536", labelZh: "2688 × 1536 (16:9 · 4MP 横幅)", labelEn: "2688 × 1536 (16:9 · 4MP Widescreen)", width: 2688, height: 1536),
+    ResolutionOption(id: "h3_4mp_1536_2688", labelZh: "1536 × 2688 (9:16 · 4MP 竖幅)", labelEn: "1536 × 2688 (9:16 · 4MP Portrait)", width: 1536, height: 2688),
+    ResolutionOption(id: "h3_8mp_2880_2880", labelZh: "2880 × 2880 (1:1 · 8MP 方图 · 推荐)", labelEn: "2880 × 2880 (1:1 · 8MP Square · Recommended)", width: 2880, height: 2880),
+    ResolutionOption(id: "h3_8mp_3840_2160", labelZh: "3840 × 2160 (16:9 · 8MP 4K 横幅)", labelEn: "3840 × 2160 (16:9 · 8MP 4K Widescreen)", width: 3840, height: 2160),
+    ResolutionOption(id: "h3_8mp_2160_3840", labelZh: "2160 × 3840 (9:16 · 8MP 4K 竖幅)", labelEn: "2160 × 3840 (9:16 · 8MP 4K Portrait)", width: 2160, height: 3840),
+    ResolutionOption(id: "h3_16mp_4096_4096", labelZh: "4096 × 4096 (1:1 · 16MP 极限方图)", labelEn: "4096 × 4096 (1:1 · 16MP Max Square)", width: 4096, height: 4096),
+    ResolutionOption(id: "h3_16mp_6272_2688", labelZh: "6272 × 2688 (21:9 · 16MP 电影超宽幅)", labelEn: "6272 × 2688 (21:9 · 16MP Cinematic Ultrawide)", width: 6272, height: 2688)
 ]
 
 struct PresetTemplate: Identifiable {
