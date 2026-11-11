@@ -1329,12 +1329,27 @@ MINIMAX_H3_IMAGE_FILES = (
     ]
     + [
         ("pdd_fused_heads.safetensors", "PDD 蒸馏输出头 (6 步各 1 个, 约 0.01 GB)"),
-        ("vae/diffusion_pytorch_model.safetensors", "图像 VAE 解码器 BF16 (约 2.34 GB)"),
+        ("pdd_config.json", "PDD 采样日程配置 (官方仓库文件)"),
+        ("vae/diffusion_pytorch_model.safetensors", "图像 VAE 解码器 FP32 (约 2.34 GB)"),
+    ]
+    + [
+        (f"processor/{fn}", f"Qwen3-VL Processor/分词器文件 {fn} (官方仓库 processor/)")
+        for fn in (
+            "chat_template.json",
+            "merges.txt",
+            "preprocessor_config.json",
+            "tokenizer.json",
+            "tokenizer_config.json",
+            "video_preprocessor_config.json",
+            "vocab.json",
+        )
     ]
 )
 # 注: H3-Image 的 text_encoder 不在此清单中 —— 与视频版 MiniMax-H3 的
-# FL2VA/text_encoder 14 分片逐个比对完全一致, 运行时直接复用视频版已下载权重,
-# 新增实际下载仅上表 14 个文件 (约 68.7 GB)。processor/ 等小文件在下载流程末尾单独获取。
+# FL2VA/text_encoder 14 分片逐个比对完全一致, 运行时直接复用视频版已下载权重。
+# processor/ 与 pdd_config.json 按官方仓库文件清单一并下载到本地存储 (共 22 个文件),
+# 加载时优先以本地目录直供 DiffSynth 管线, 不再依赖加载时临时远程拉取
+# (2026-11-11 真机日志曾出现 processor 远程匹配 0 文件, 来源不确定故改本地直供)。
 
 # ==============================================================================
 # 开源旗舰多模型注册中心 (Hugging Face Top Models 2026 · 全量免审核 Gated=False)
@@ -2688,7 +2703,15 @@ def _find_existing_model_file(model_id: str, fname: str) -> Optional[str]:
             if os.path.isdir(leg_root):
                 candidates.append(os.path.join(leg_root, repo_sub, fname))
     for p in candidates:
-        if os.path.exists(p) and os.path.getsize(p) > 64 * 1024:
+        if not os.path.exists(p):
+            continue
+        sz = os.path.getsize(p)
+        # 权重文件用 64KB 门槛过滤残片; 配置/分词器等小文件 (官方 processor/*.json
+        # 等本就小于 64KB) 只要求非空, 否则永远判定未下载 (H3-Image 接入时踩到)
+        if fname.endswith((".safetensors", ".bin", ".gguf", ".pt", ".pth")):
+            if sz > 64 * 1024:
+                return p
+        elif sz > 0:
             return p
     return None
 
@@ -4135,6 +4158,27 @@ def load_model_to_vram_core(
                     "computation_dtype": torch.bfloat16,
                     "computation_device": "cuda",
                 }
+                # Processor 优先本地直供: 官方 processor/ 全套文件已随权重下载到本模型
+                # 存储 (见 MINIMAX_H3_IMAGE_FILES), 找到就以本地目录交给管线; 找不到才
+                # 退回远程按模式拉取 (真机曾出现远程匹配 0 文件, 不再把成败押在远程上)
+                _proc_dir = None
+                for _base in _get_model_dirs(target_id) + (
+                    f"/dev/shm/EasyColab_Models/{target_id}",
+                ):
+                    if _base and os.path.exists(
+                        os.path.join(_base, "processor", "preprocessor_config.json")
+                    ):
+                        _proc_dir = os.path.join(_base, "processor")
+                        break
+                _processor_config = (
+                    ModelConfig(path=_proc_dir)
+                    if _proc_dir
+                    else ModelConfig(
+                        model_id=repo_id or "MiniMaxAI/MiniMax-H3-Image",
+                        origin_file_pattern="processor/",
+                        download_source="huggingface",
+                    )
+                )
                 new_pipe = MiniMaxH3ImagePipeline.from_pretrained(
                     torch_dtype=torch.bfloat16,
                     device="cuda",
@@ -4144,11 +4188,7 @@ def load_model_to_vram_core(
                         ModelConfig(path=pdd_path, **cpu_fast_vram_config),
                         ModelConfig(path=vae_path, **vram_config),
                     ],
-                    processor_config=ModelConfig(
-                        model_id=repo_id or "MiniMaxAI/MiniMax-H3-Image",
-                        origin_file_pattern="processor/",
-                        download_source="huggingface",
-                    ),
+                    processor_config=_processor_config,
                     vram_limit=vram_limit,
                 )
                 # 不预热 text_encoder/dit: 二者合计约 133GB, 全量预热会把 96GB 显存塞满,
