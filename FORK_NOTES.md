@@ -42,3 +42,12 @@ two areas only, and only one is worth porting:
 - Add MiniMax-H3-Image (text-to-image + image editing) via the
   DiffSynth minimax_h3_image pipeline, reusing the H3 video
   text-encoder weights.
+
+## Upstream sync rule (owner, 2026-11-11)
+
+Upstream (wy51ai/easycolab) is not followed blindly. When upstream
+pushes an update or new feature, evaluate whether it is useful /
+needed for the owner; if it is, apply the same update to this fork
+(weiwei-custom, preserving our prompt workbench and H3-Image work,
+with a build check after merging) and to the Mac project copy at
+/Users/weiwei/AI/mygpu/repo.
