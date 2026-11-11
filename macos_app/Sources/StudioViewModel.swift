@@ -262,6 +262,14 @@ class StudioViewModel: ObservableObject {
     @Published var negativePrompt: String = ""
     @Published var soundscapePrompt: String = PRESET_TEMPLATES[0].soundscape
     @Published var musicPrompt: String = PRESET_TEMPLATES[0].music
+
+    // 提示词灵感台状态（weiwei-custom fork 移植自旧魔改单文件）
+    @Published var selectedCinemaCameraId: String = "raw_lens"
+    @Published var selectedArtStyleId: String = "none"
+    @Published var selectedCameraMotionId: String = "none"
+    @Published var showInspirationStudio: Bool = true
+    @Published var inspirationCategoryTab: Int = 0
+    @Published var isExpandingPromptWithQwen: Bool = false
     @Published var firstFrameImage: NSImage? = nil
     @Published var lastFrameImage: NSImage? = nil
     @Published var selectedVideoResolution: ResolutionOption = VIDEO_RESOLUTIONS[0]
@@ -664,6 +672,268 @@ class StudioViewModel: ObservableObject {
     deinit {
         if let languageObserver {
             NotificationCenter.default.removeObserver(languageObserver)
+        }
+    }
+
+    // MARK: - 提示词灵感台逻辑（weiwei-custom fork 移植自旧魔改单文件 EasyColabStudio.swift 第 3512–3770 行）
+
+    var activeCinemaCamera: CinemaCameraPreset {
+        CINEMA_CAMERA_PRESETS.first(where: { $0.id == selectedCinemaCameraId }) ?? CINEMA_CAMERA_PRESETS[0]
+    }
+
+    var activeArtStyle: ArtStylePreset {
+        ART_STYLE_PRESETS.first(where: { $0.id == selectedArtStyleId }) ?? ART_STYLE_PRESETS[0]
+    }
+
+    var activeCameraMotion: CameraMotionPreset {
+        CAMERA_MOTION_PRESETS.first(where: { $0.id == selectedCameraMotionId }) ?? CAMERA_MOTION_PRESETS[0]
+    }
+
+    var matchingTemplatesForActiveModality: [PresetTemplate] {
+        let mod = activeModelSpec.modality
+        if mod == .llmVLM {
+            return PRESET_TEMPLATES.filter { $0.category == .llmVLM }
+        }
+        return PRESET_TEMPLATES.filter {
+            $0.universalScene || $0.category == mod || (mod == .video && $0.category == .videoAudio)
+        }
+    }
+
+    func applySceneTemplate(_ tpl: PresetTemplate) {
+        visualPrompt = tpl.visual
+        if !tpl.soundscape.isEmpty {
+            soundscapePrompt = tpl.soundscape
+        }
+        if !tpl.music.isEmpty {
+            musicPrompt = tpl.music
+        }
+        selectedCinemaCameraId = tpl.cameraId
+    }
+
+    private func stripKnownSuffixes(_ source: String, suffixes: [String]) -> String {
+        var result = source
+        for raw in suffixes where !raw.isEmpty {
+            let candidates = [
+                raw,
+                raw.trimmingCharacters(in: CharacterSet(charactersIn: ",， "))
+            ]
+            for cand in candidates where !cand.isEmpty {
+                if let range = result.range(of: cand, options: [.caseInsensitive, .backwards]) {
+                    result.removeSubrange(range)
+                }
+            }
+        }
+        while result.hasSuffix(" ") || result.hasSuffix(",") || result.hasSuffix("，") {
+            result.removeLast()
+        }
+        return result
+    }
+
+    func selectCinemaCamera(_ cam: CinemaCameraPreset) {
+        let allCamSuffixes = CINEMA_CAMERA_PRESETS.map { $0.suffix }
+        var cleaned = stripKnownSuffixes(visualPrompt, suffixes: allCamSuffixes)
+        if !cam.suffix.isEmpty {
+            if cleaned.isEmpty {
+                cleaned = cam.suffix.trimmingCharacters(in: CharacterSet(charactersIn: ",， "))
+            } else {
+                cleaned += cam.suffix
+            }
+        }
+        visualPrompt = cleaned
+        selectedCinemaCameraId = cam.id
+    }
+
+    func selectArtStyle(_ style: ArtStylePreset) {
+        let allStyleSuffixes = ART_STYLE_PRESETS.flatMap { [$0.suffixZh, $0.suffixEn] }
+        var cleaned = stripKnownSuffixes(visualPrompt, suffixes: allStyleSuffixes)
+        if !style.suffix.isEmpty {
+            if cleaned.isEmpty {
+                cleaned = style.suffix.trimmingCharacters(in: CharacterSet(charactersIn: ",， "))
+            } else {
+                cleaned += style.suffix
+            }
+        }
+        visualPrompt = cleaned
+        selectedArtStyleId = style.id
+    }
+
+    func selectCameraMotion(_ motion: CameraMotionPreset) {
+        let allMotionSuffixes = CAMERA_MOTION_PRESETS.map { $0.suffix }
+        var cleaned = stripKnownSuffixes(visualPrompt, suffixes: allMotionSuffixes)
+        if !motion.suffix.isEmpty {
+            if cleaned.isEmpty {
+                cleaned = motion.suffix.trimmingCharacters(in: CharacterSet(charactersIn: ",， "))
+            } else {
+                cleaned += motion.suffix
+            }
+        }
+        visualPrompt = cleaned
+        selectedCameraMotionId = motion.id
+    }
+
+    func pickRandomSceneInspiration() {
+        let pool = matchingTemplatesForActiveModality
+        guard !pool.isEmpty else { return }
+        let candidates = pool.filter { $0.visual != visualPrompt }
+        if let picked = (candidates.isEmpty ? pool : candidates).randomElement() {
+            applySceneTemplate(picked)
+            statusMessage = L(
+                "🎲 已填入大师灵感：\(picked.name)",
+                "🎲 Applied master scene inspiration: \(picked.name)"
+            )
+        }
+    }
+
+    func expandPromptWithQwen() async {
+        guard !isExpandingPromptWithQwen else { return }
+        await checkColabStatus(silent: true)
+        guard isConnected else {
+            statusMessage = L(
+                "尚未连接 Colab 实例，请先连接并在左侧将 Qwen3.8-27B 加载到显存。",
+                "Not connected to Colab. Please connect and load Qwen3.8-27B into VRAM first."
+            )
+            return
+        }
+        guard isQwenLoadedInVRAM else {
+            statusMessage = L(
+                "💡 请先在左侧将「Qwen3.8-27B (推荐 GGUF 极速版)」加载到显存（支持与生图/视频模型同时常驻），即可一键智能扩写大师级提示词！",
+                "💡 Load 'Qwen3.8-27B (GGUF recommended)' into VRAM on the left first (can co-reside with image/video models) to unlock 1-click AI Prompt Expansion!"
+            )
+            return
+        }
+
+        let base = normalizedBaseURL
+        guard let url = URL(string: "\(base)/v1/chat/completions") else { return }
+
+        isExpandingPromptWithQwen = true
+        defer { isExpandingPromptWithQwen = false }
+
+        let seedIdea = visualPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cam = activeCinemaCamera
+        let style = activeArtStyle
+        let motion = activeCameraMotion
+        let isVideoAudio = (activeModelSpec.modality == .videoAudio)
+
+        statusMessage = L(
+            "✨ 正在调用云端 Qwen3.8-27B 结合「\(cam.shortName)」光学参数扩写大师级提示词...",
+            "✨ Expanding prompt with cloud Qwen3.8-27B + '\(cam.shortName)' optics..."
+        )
+
+        let camInstruction = cam.id != "raw_lens"
+            ? "必须自然融入以下电影摄影机与光学镜头后缀：\(cam.suffix)"
+            : "请根据画面意境自动搭配最合适的 ARRI Alexa 65 / Cooke Anamorphic / IMAX 65mm / Leica Noctilux 电影摄影机与镜头光学描述"
+        let styleInstruction = style.id != "none" ? "，画风采用：\(style.name) (\(style.suffix))" : ""
+        let motionInstruction = motion.id != "none" ? "，运镜采用：\(motion.name) (\(motion.suffix))" : ""
+
+        let sysPrompt = """
+        你是世界顶级电影摄影指导（精通岩井俊二、王家卫×杜可风、罗杰·迪金斯、新海诚的镜头语言与光影美学）以及多模态 AI 提示词专家。
+        请将用户的简短想法或现有提示词，扩写为极具电影质感、光影层次丰富的大师级生成提示词。
+        要求：
+        1. \(camInstruction)\(styleInstruction)\(motionInstruction)。
+        2. 只输出一个合法的 JSON 对象，不要输出任何 Markdown 代码块标记或额外解释，JSON 结构严格如下：
+        {"visual": "前半段用优美细腻的中文描述主体、神态、环境光影与构图细节，后半段附上英文电影摄影机、镜头光圈、胶片颗粒与光影后缀", "soundscape": "English ambient soundscape, foley and environmental audio details", "music": "English cinematic background music score description"}
+        """
+
+        let userText: String
+        if seedIdea.isEmpty {
+            userText = "请帮我全新构思一组惊艳的电影感画面（结合 \(cam.name) 的光学美学），直接输出 JSON。"
+        } else {
+            userText = "请基于以下画面构想进行大师级电影感扩写与润色（保留核心意境并大幅丰富光影、构图、质感与镜头细节），直接输出 JSON：\n\(seedIdea)"
+        }
+
+        var userContent: Any = userText
+        if ["fl2va", "i2v", "i2i_edit"].contains(taskModeId),
+           let refImg = firstFrameImage,
+           let b64 = encodeImageToBase64(refImg) {
+            userContent = [
+                ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64,\(b64)"]],
+                ["type": "text", "text": userText + "\n（已附上参考图，请结合图片中的主体、构图与光影进行扩写）"]
+            ]
+        }
+
+        let preferredQwenId = loadedModelIds.contains("qwen38_27b_gguf") ? "Qwen/Qwen3.8-27B-GGUF" : "Qwen/Qwen3.8-27B"
+        let reqBody: [String: Any] = [
+            "model": preferredQwenId,
+            "messages": [
+                ["role": "system", "content": sysPrompt],
+                ["role": "user", "content": userContent]
+            ],
+            "stream": false,
+            "enable_thinking": false,
+            "max_tokens": 700,
+            "temperature": 0.75,
+            "top_p": 0.85
+        ]
+
+        do {
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if apiKeyEnabled && !apiAccessKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                req.setValue("Bearer \(apiAccessKey.trimmingCharacters(in: .whitespacesAndNewlines))", forHTTPHeaderField: "Authorization")
+            }
+            req.timeoutInterval = 45
+            req.httpBody = try JSONSerialization.data(withJSONObject: reqBody)
+
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            if let httpResp = resp as? HTTPURLResponse, httpResp.statusCode != 200 {
+                let errTxt = String(data: data, encoding: .utf8) ?? "HTTP \(httpResp.statusCode)"
+                statusMessage = L("Qwen 扩写请求失败: \(errTxt)", "Qwen prompt expansion failed: \(errTxt)")
+                return
+            }
+
+            guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let choices = root["choices"] as? [[String: Any]],
+                  let first = choices.first,
+                  let msg = first["message"] as? [String: Any],
+                  let rawContent = msg["content"] as? String else {
+                statusMessage = L("Qwen 返回格式异常", "Unexpected response format from Qwen")
+                return
+            }
+
+            var cleaned = rawContent.trimmingCharacters(in: .whitespacesAndNewlines)
+            if cleaned.hasPrefix("```") {
+                cleaned = cleaned
+                    .replacingOccurrences(of: "^```[a-zA-Z]*\\s*", with: "", options: .regularExpression)
+                    .replacingOccurrences(of: "\\s*```$", with: "", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let startIdx = cleaned.firstIndex(of: "{"),
+               let endIdx = cleaned.lastIndex(of: "}") {
+                let jsonSlice = String(cleaned[startIdx...endIdx])
+                if let sliceData = jsonSlice.data(using: .utf8),
+                   let parsed = try? JSONSerialization.jsonObject(with: sliceData) as? [String: Any] {
+                    if let v = parsed["visual"] as? String, !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        visualPrompt = v.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                    if isVideoAudio {
+                        if let s = parsed["soundscape"] as? String, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            soundscapePrompt = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
+                        if let m = parsed["music"] as? String, !m.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            musicPrompt = m.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
+                    }
+                    statusMessage = L(
+                        "✨ Qwen3.8-27B 大师导演扩写完成！（已融合 \(cam.shortName) 光学参数）",
+                        "✨ Qwen3.8-27B director prompt expansion complete! (\(cam.shortName))"
+                    )
+                    return
+                }
+            }
+
+            if !cleaned.isEmpty {
+                visualPrompt = cleaned
+                statusMessage = L(
+                    "✨ Qwen3.8-27B 大师导演扩写完成！",
+                    "✨ Qwen3.8-27B director prompt expansion complete!"
+                )
+            }
+        } catch {
+            statusMessage = L(
+                "Qwen 扩写请求出错: \(error.localizedDescription)",
+                "Qwen expansion error: \(error.localizedDescription)"
+            )
         }
     }
 
