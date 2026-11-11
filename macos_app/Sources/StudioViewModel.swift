@@ -942,6 +942,16 @@ class StudioViewModel: ObservableObject {
         selectedModelId = spec.id
         taskModeId = spec.modes[0].id
         inferenceSteps = spec.defaultSteps
+        // Keep the image resolution inside the active model's preset set:
+        // H3-Image uses its native 4MP / 8MP / 16MP presets, other image
+        // models fall back to the standard set when an H3 preset is active.
+        if spec.id == "minimax_h3_image" {
+            if !H3_IMAGE_RESOLUTIONS.contains(where: { $0.id == selectedImageResolution.id }) {
+                selectedImageResolution = H3_IMAGE_RESOLUTIONS.first(where: { $0.id == "h3_8mp_2880_2880" }) ?? H3_IMAGE_RESOLUTIONS[0]
+            }
+        } else if spec.modality == .image, H3_IMAGE_RESOLUTIONS.contains(where: { $0.id == selectedImageResolution.id }) {
+            selectedImageResolution = IMAGE_RESOLUTIONS[0]
+        }
         selectedPrecision = "bf16"
         modelFiles = spec.defaultFiles
         downloadedCount = 0

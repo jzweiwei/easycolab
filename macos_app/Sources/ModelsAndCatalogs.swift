@@ -403,13 +403,14 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
         ],
         defaultFiles: (1...12).map { i in
             ModelFileItem(
-                name: String(format: "transformer/diffusion_pytorch_model-%05d-of-00012.safetensors", i),
+                name: String(format: "transformer/model-%05d-of-00012.safetensors", i),
                 desc: "生图 DiT 主干 BF16 \(i)/12",
                 exists: false,
                 size_gb: 0
             )
         } + [
-            ModelFileItem(name: "vae/diffusion_pytorch_model.safetensors", desc: "图像 VAE (2.3 GB)", exists: false, size_gb: 0)
+            ModelFileItem(name: "vae/diffusion_pytorch_model.safetensors", desc: "图像 VAE (2.3 GB)", exists: false, size_gb: 0),
+            ModelFileItem(name: "pdd_fused_heads.safetensors", desc: "6 步蒸馏逐步输出头 (12 MB)", exists: false, size_gb: 0)
         ]
     ),
     OpenModelSpec(
@@ -488,6 +489,18 @@ let IMAGE_RESOLUTIONS: [ResolutionOption] = [
     ResolutionOption(id: "i_1344_768", labelZh: "1344 × 768 (16:9 电影横幅)", labelEn: "1344 × 768 (16:9 Cinematic Widescreen)", width: 1344, height: 768),
     ResolutionOption(id: "i_768_1344", labelZh: "768 × 1344 (9:16 竖版海报)", labelEn: "768 × 1344 (9:16 Vertical Poster)", width: 768, height: 1344),
     ResolutionOption(id: "i_1536_1024", labelZh: "1536 × 1024 (3:2 单反摄影)", labelEn: "1536 × 1024 (3:2 DSLR Photo)", width: 1536, height: 1024)
+]
+
+// MiniMax-H3-Image native output presets (4MP / 8MP / 16MP tiers, all dimensions multiples of 32)
+let H3_IMAGE_RESOLUTIONS: [ResolutionOption] = [
+    ResolutionOption(id: "h3_4mp_2048_2048", labelZh: "2048 × 2048 (1:1 · 4MP 方图)", labelEn: "2048 × 2048 (1:1 · 4MP Square)", width: 2048, height: 2048),
+    ResolutionOption(id: "h3_4mp_2688_1536", labelZh: "2688 × 1536 (16:9 · 4MP 横幅)", labelEn: "2688 × 1536 (16:9 · 4MP Widescreen)", width: 2688, height: 1536),
+    ResolutionOption(id: "h3_4mp_1536_2688", labelZh: "1536 × 2688 (9:16 · 4MP 竖幅)", labelEn: "1536 × 2688 (9:16 · 4MP Portrait)", width: 1536, height: 2688),
+    ResolutionOption(id: "h3_8mp_2880_2880", labelZh: "2880 × 2880 (1:1 · 8MP 方图 · 推荐)", labelEn: "2880 × 2880 (1:1 · 8MP Square · Recommended)", width: 2880, height: 2880),
+    ResolutionOption(id: "h3_8mp_3840_2160", labelZh: "3840 × 2160 (16:9 · 8MP 4K 横幅)", labelEn: "3840 × 2160 (16:9 · 8MP 4K Widescreen)", width: 3840, height: 2160),
+    ResolutionOption(id: "h3_8mp_2160_3840", labelZh: "2160 × 3840 (9:16 · 8MP 4K 竖幅)", labelEn: "2160 × 3840 (9:16 · 8MP 4K Portrait)", width: 2160, height: 3840),
+    ResolutionOption(id: "h3_16mp_4096_4096", labelZh: "4096 × 4096 (1:1 · 16MP 极限方图)", labelEn: "4096 × 4096 (1:1 · 16MP Max Square)", width: 4096, height: 4096),
+    ResolutionOption(id: "h3_16mp_6272_2688", labelZh: "6272 × 2688 (21:9 · 16MP 电影超宽幅)", labelEn: "6272 × 2688 (21:9 · 16MP Cinematic Ultrawide)", width: 6272, height: 2688)
 ]
 
 // MARK: - 提示词灵感台预设（weiwei-custom fork 移植自旧魔改单文件 EasyColabStudio.swift 第 554–769 行）
