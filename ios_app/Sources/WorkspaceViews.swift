@@ -13,6 +13,12 @@ struct CreateTabView: View {
     @State private var showWeightShards: Bool = false
     @FocusState private var promptFocused: Bool
 
+    // Image resolution presets follow the active model: MiniMax-H3-Image
+    // natively renders 4MP / 8MP / 16MP, other image models keep the standard set.
+    private var imageResolutionOptions: [ResolutionOption] {
+        vm.selectedModelId == "minimax_h3_image" ? H3_IMAGE_RESOLUTIONS : IMAGE_RESOLUTIONS
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -554,7 +560,7 @@ struct CreateTabView: View {
                                 .fixedSize(horizontal: true, vertical: false)
                             Spacer(minLength: 6)
                             Menu {
-                                ForEach(IMAGE_RESOLUTIONS) { r in
+                                ForEach(imageResolutionOptions) { r in
                                     Button {
                                         vm.selectedImageResolution = r
                                     } label: {
