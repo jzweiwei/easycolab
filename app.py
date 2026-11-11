@@ -2,6 +2,8 @@ import os
 
 # Remove the deployment secret before any model installer starts subprocesses.
 _DEPLOY_PASSWORD = os.environ.pop("EASYCOLAB_ADMIN_PASSWORD", "") if __name__ == "__main__" else ""
+# Modified by jzweiwei (fork of wy51ai/easycolab, Apache-2.0): added MiniMax-H3-Image
+# (minimax_h3_image) support on 2026-11-11 - see IMPLEMENTATION.md in repo root.
 import io
 import gc
 import re
@@ -1320,6 +1322,20 @@ MINIMAX_H3_BF16_FILES = (
     ]
 )
 
+MINIMAX_H3_IMAGE_FILES = (
+    [
+        (f"transformer/model-{i:05d}-of-00012.safetensors", f"H3-Image DiT 主干 BF16 {i}/12")
+        for i in range(1, 13)
+    ]
+    + [
+        ("pdd_fused_heads.safetensors", "PDD 蒸馏输出头 (6 步各 1 个, 约 0.01 GB)"),
+        ("vae/diffusion_pytorch_model.safetensors", "图像 VAE 解码器 BF16 (约 2.34 GB)"),
+    ]
+)
+# 注: H3-Image 的 text_encoder 不在此清单中 —— 与视频版 MiniMax-H3 的
+# FL2VA/text_encoder 14 分片逐个比对完全一致, 运行时直接复用视频版已下载权重,
+# 新增实际下载仅上表 14 个文件 (约 68.7 GB)。processor/ 等小文件在下载流程末尾单独获取。
+
 # ==============================================================================
 # 开源旗舰多模型注册中心 (Hugging Face Top Models 2026 · 全量免审核 Gated=False)
 # ==============================================================================
@@ -1332,6 +1348,16 @@ MODEL_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "全模态音视频生成 · BF16 原生满血 · 32kHz 立体声",
         "approx_size_gb": 134.1,
         "files": MINIMAX_H3_BF16_FILES,
+    },
+    "minimax_h3_image": {
+        "id": "minimax_h3_image",
+        "name": "MiniMax-H3-Image (33B)",
+        "repo_id": "MiniMaxAI/MiniMax-H3-Image",
+        "modality": "image",
+        "pipeline_arch": "minimax_h3_image",
+        "category": "H3 家族文生图与参考图改图 · 蒸馏 6 步无 CFG · 原生约 1600 万像素直出 · 文本编码器与 H3 视频版共用不重复下载",
+        "approx_size_gb": 68.7,
+        "files": MINIMAX_H3_IMAGE_FILES,
     },
     "qwen38_27b": {
         "id": "qwen38_27b",
@@ -2016,6 +2042,17 @@ def inspect_and_resolve_hf_repo(
     repo_low = repo_clean.lower()
     # 兼容已知特定多模态/图像生成仓库结构（如用户在客户端手动导入）
     if not pat_clean:
+        if repo_low == "minimaxai/minimax-h3-image" or "minimax-h3-image" in repo_low:
+            i_spec = MODEL_CATALOG["minimax_h3_image"]
+            return {
+                "repo_id": repo_clean,
+                "include_pattern": "",
+                "modality": "image",
+                "pipeline_arch": "minimax_h3_image",
+                "category": "自定义导入 · H3 家族文生图与参考图改图 · 蒸馏 6 步 · 文本编码器与 H3 视频版共用",
+                "approx_size_gb": i_spec["approx_size_gb"],
+                "files": list(i_spec["files"]),
+            }
         if repo_low == "minimaxai/minimax-h3" or "minimax-h3" in repo_low and "gguf" not in repo_low:
             return {
                 "repo_id": repo_clean,
@@ -3115,6 +3152,14 @@ def download_model_weights_core(model_id: Optional[str] = None, hf_token: str = 
                     download_source="huggingface",
                 )
                 proc_cfg.download_if_necessary()
+            elif pipeline_arch == "minimax_h3_image":
+                from diffsynth.pipelines.minimax_h3_image import ModelConfig
+                proc_cfg = ModelConfig(
+                    model_id=repo_id or "MiniMaxAI/MiniMax-H3-Image",
+                    origin_file_pattern="processor/",
+                    download_source="huggingface",
+                )
+                proc_cfg.download_if_necessary()
             elif pipeline_arch in ("qwen38_27b", "transformers", "diffusers_image"):
                 snapshot_download(
                     repo_id=repo_id,
@@ -3916,6 +3961,9 @@ def load_model_to_vram_core(
             elif pipeline_arch == "minimax_h3":
                 # BF16 单阶段峰值约 62.1GB；在 G4 (96GB) 上可与 Qwen3.8-GGUF (~21GB) 同时共驻显存
                 required_free_gb = min(64.5, max(24.0, total_vram_gb - 5.0))
+            elif pipeline_arch == "minimax_h3_image":
+                # DiffSynth 低显存官方例实测 16MP 峰值约 38 GiB (H20 96GB); DiT 走 CPU 常驻、编码器/VAE 走磁盘流式
+                required_free_gb = min(44.0, max(24.0, total_vram_gb - 5.0))
             elif pipeline_arch == "transformers":
                 required_free_gb = min(max(12.0, approx_gb + 3.0), max(12.0, total_vram_gb - 1.5))
             else:
@@ -4051,6 +4099,60 @@ def load_model_to_vram_core(
                 tags = [t for t in (ram_residency_tag, residency_tag) if t]
                 if tags:
                     mode_label = f"{mode_label} · {' / '.join(tags)}"
+
+            elif pipeline_arch == "minimax_h3_image":
+                from diffsynth.pipelines.minimax_h3_image import MiniMaxH3ImagePipeline, ModelConfig
+                MODEL_DOWNLOAD_STATE["progress"] = 0.30
+                MODEL_DOWNLOAD_STATE["message"] = "正在映射 MiniMax-H3-Image DiT 主干 (12 分片) 与 PDD 蒸馏输出头..."
+                dit_paths = [
+                    _resolve_and_stage_model_file(target_id, f"transformer/model-{i:05d}-of-00012.safetensors")
+                    for i in range(1, 13)
+                ]
+                pdd_path = _resolve_and_stage_model_file(target_id, "pdd_fused_heads.safetensors")
+                vae_path = _resolve_and_stage_model_file(target_id, "vae/diffusion_pytorch_model.safetensors")
+                # 文本编码器与 H3 视频版逐分片完全一致: 直接复用 minimax_h3 已下载的
+                # FL2VA/text_encoder (DiffSynth 官方例同样以 MiniMax-H3:FL2VA/text_encoder 作为生图编码器来源)
+                te_rel_names = [f"FL2VA/text_encoder/model-{i:05d}-of-00014.safetensors" for i in range(1, 15)]
+                missing_te = [fn for fn in te_rel_names if not _find_existing_model_file("minimax_h3", fn)]
+                if missing_te:
+                    raise RuntimeError(
+                        "MiniMax-H3-Image 与视频版共用同一文本编码器, 但 MiniMax-H3 (视频) 的 "
+                        f"FL2VA/text_encoder 权重尚未下载完整 (缺 {len(missing_te)}/14 分片)。"
+                        "请先选择 MiniMax-H3 (33B) 点击「下载权重」, 再加载 MiniMax-H3-Image。"
+                    )
+                MODEL_DOWNLOAD_STATE["progress"] = 0.55
+                MODEL_DOWNLOAD_STATE["message"] = "正在复用 MiniMax-H3 视频版多模态文本编码器 (14 分片, 与生图版完全一致)..."
+                te_paths = [_resolve_and_stage_model_file("minimax_h3", fn) for fn in te_rel_names]
+                # 卸载策略照 DiffSynth 低显存官方例 (examples/minimax_h3_image/model_inference_low_vram):
+                # 编码器/VAE 用通用 vram_config 磁盘流式; DiT+PDD 头 BF16 常驻系统内存 (cpu_fast), 计算时逐层换入 GPU。
+                cpu_fast_vram_config = {
+                    "offload_dtype": torch.bfloat16,
+                    "offload_device": "cpu",
+                    "onload_dtype": torch.bfloat16,
+                    "onload_device": "cpu",
+                    "preparing_dtype": torch.bfloat16,
+                    "preparing_device": "cuda",
+                    "computation_dtype": torch.bfloat16,
+                    "computation_device": "cuda",
+                }
+                new_pipe = MiniMaxH3ImagePipeline.from_pretrained(
+                    torch_dtype=torch.bfloat16,
+                    device="cuda",
+                    model_configs=[
+                        ModelConfig(path=te_paths, **vram_config),
+                        ModelConfig(path=dit_paths, **cpu_fast_vram_config),
+                        ModelConfig(path=pdd_path, **cpu_fast_vram_config),
+                        ModelConfig(path=vae_path, **vram_config),
+                    ],
+                    processor_config=ModelConfig(
+                        model_id=repo_id or "MiniMaxAI/MiniMax-H3-Image",
+                        origin_file_pattern="processor/",
+                        download_source="huggingface",
+                    ),
+                    vram_limit=vram_limit,
+                )
+                _enable_high_vram_optimizations(new_pipe, total_vram_gb=total_vram_gb, preload_vram=True)
+                mode_label = f"{spec['name']} · BF16 · 6步蒸馏"
 
             elif pipeline_arch == "qwen_image_21":
                 from diffsynth.pipelines.qwen_image_21 import QwenImage21Pipeline, ModelConfig
@@ -4344,12 +4446,24 @@ def load_model_to_vram_core(
             touch_activity()
 
 
+def download_minimax_h3_image_weights_core(hf_token: str = "") -> Tuple[bool, str]:
+    return download_model_weights_core("minimax_h3_image", hf_token)
+
+
 def load_minimax_h3_to_vram_core(
     precision_mode: str = "bf16",
     offload_mode: str = "fast_mmap",
     hf_token: str = "",
 ) -> Tuple[bool, str]:
     return load_model_to_vram_core("minimax_h3", "bf16", offload_mode, hf_token)
+
+
+def load_minimax_h3_image_to_vram_core(
+    precision_mode: str = "bf16",
+    offload_mode: str = "fast_mmap",
+    hf_token: str = "",
+) -> Tuple[bool, str]:
+    return load_model_to_vram_core("minimax_h3_image", "bf16", offload_mode, hf_token)
 
 
 def _enable_high_vram_optimizations(
@@ -6686,6 +6800,7 @@ class GenerateVideoRequest(BaseModel):
     randomize_seed: bool = True
     batch_count: int = 1
     denoising_strength: float = 0.70
+    size_preset: str = ""
     enable_thinking: bool = True
     max_new_tokens: int = 16384
     context_length: Optional[int] = None
@@ -7124,6 +7239,29 @@ def _pipeline_job_execution_guard(
                 pass
 
 
+H3_IMAGE_SIZE_PRESET_AREAS = {
+    "4mp": 2048 * 2048,
+    "8mp": 8_388_608,
+    "16mp": 4096 * 4096,
+}
+
+
+def _h3_image_target_size(req: GenerateVideoRequest) -> Tuple[int, int]:
+    """H3-Image 尺寸: 有 size_preset (4MP/8MP/16MP) 时按 req 宽高比换算到目标像素数
+    并对齐 32 的倍数 (管线画布要求); 无预设时原样使用 req.width/height。"""
+    w, h = int(req.width or 0), int(req.height or 0)
+    preset = str(getattr(req, "size_preset", "") or "").strip().lower().replace(" ", "")
+    if preset in H3_IMAGE_SIZE_PRESET_AREAS:
+        area = float(H3_IMAGE_SIZE_PRESET_AREAS[preset])
+        ratio = (w / h) if (w > 0 and h > 0) else 1.0
+        tw = (area * ratio) ** 0.5
+        th = area / tw
+        tw = max(512, int(round(tw / 32.0)) * 32)
+        th = max(512, int(round(th / 32.0)) * 32)
+        return tw, th
+    return (w if w >= 256 else 2048), (h if h >= 256 else 2048)
+
+
 def _run_async_generation_job(job_id: str, req: GenerateVideoRequest):
     touch_activity()
     job_cancel_event = _JOB_CANCEL_EVENTS.setdefault(job_id, threading.Event())
@@ -7292,6 +7430,31 @@ def _run_async_generation_job(job_id: str, req: GenerateVideoRequest):
                         )
                         video = None
                         audio = None
+
+                    elif pipeline_arch == "minimax_h3_image":
+                        filename = f"minimax_h3_image_{req.task_mode}_{timestamp}_seed{current_seed}.png"
+                        output_path = os.path.join(DEFAULT_OUTPUT_DIR, filename)
+                        edit_imgs = [im for im in (first_img, last_img) if im is not None] if req.task_mode == "i2i_edit" else None
+                        tw, th = _h3_image_target_size(req)
+                        # 蒸馏权重固定 6 步、cfg_scale=1.0 (无 CFG): 强制覆盖客户端传入的步数, 与官方例一致
+                        img_out = active_pipe(
+                            prompt=req.visual_prompt,
+                            negative_prompt=req.negative_prompt.strip() or " ",
+                            cfg_scale=1.0,
+                            edit_image=edit_imgs if edit_imgs else None,
+                            height=int(th),
+                            width=int(tw),
+                            num_inference_steps=6,
+                            seed=int(current_seed),
+                            progress_bar_cmd=step_progress_bar,
+                        )
+                        if job_cancel_event.is_set() or ABORT_GENERATION_EVENT.is_set():
+                            raise GenerationAbortedError("已手动停止当前推理任务")
+                        JOBS[job_id]["progress"] = round(base_prog + 0.96 * span_prog, 3)
+                        JOBS[job_id]["message"] = f"{prefix}正在写入无损 PNG 图像文件 (96%)..."
+                        img_out.save(output_path)
+                        img_out = None
+                        edit_imgs = None
 
                     elif pipeline_arch == "qwen_image_21":
                         filename = f"qwen_image21_{req.task_mode}_{timestamp}_seed{current_seed}.png"
@@ -8363,6 +8526,7 @@ def attach_macos_api_routes(app: FastAPI):
             {"id": "Qwen/Qwen-Image-2.1", "object": "model", "created": now_ts, "owned_by": "qwen", "loaded": "qwen_image_21" in LOADED_RUNTIMES},
             {"id": "Tongyi-MAI/Z-Image-Turbo", "object": "model", "created": now_ts, "owned_by": "tongyi", "loaded": "z_image_turbo" in LOADED_RUNTIMES},
             {"id": "MiniMaxAI/MiniMax-H3", "object": "model", "created": now_ts, "owned_by": "minimax", "loaded": "minimax_h3" in LOADED_RUNTIMES},
+            {"id": "MiniMaxAI/MiniMax-H3-Image", "object": "model", "created": now_ts, "owned_by": "minimax", "loaded": "minimax_h3_image" in LOADED_RUNTIMES},
         ]
         for cm in _get_custom_models_public_list():
             models_data.append({
@@ -8611,12 +8775,14 @@ def attach_macos_api_routes(app: FastAPI):
         body = await request.json()
         req_model_str = str(body.get("model") or "").lower()
         img_target_id: Optional[str] = None
-        if ("z-image" in req_model_str or "z_image" in req_model_str) and "z_image_turbo" in LOADED_RUNTIMES:
+        if ("h3-image" in req_model_str or "h3_image" in req_model_str) and "minimax_h3_image" in LOADED_RUNTIMES:
+            img_target_id = "minimax_h3_image"
+        elif ("z-image" in req_model_str or "z_image" in req_model_str) and "z_image_turbo" in LOADED_RUNTIMES:
             img_target_id = "z_image_turbo"
         elif "qwen" in req_model_str and "qwen_image_21" in LOADED_RUNTIMES:
             img_target_id = "qwen_image_21"
         else:
-            for cand in ("z_image_turbo", "qwen_image_21"):
+            for cand in ("z_image_turbo", "qwen_image_21", "minimax_h3_image"):
                 if cand in LOADED_RUNTIMES:
                     img_target_id = cand
                     break
@@ -8624,7 +8790,7 @@ def attach_macos_api_routes(app: FastAPI):
         if not img_target_id:
             return JSONResponse(
                 status_code=503,
-                content={"error": {"message": "请先在客户端加载 Qwen-Image-2.1 或 Z-Image-Turbo 至显存（可与 Qwen3.8-27B 同时常驻）。", "type": "server_error"}},
+                content={"error": {"message": "请先在客户端加载 Qwen-Image-2.1、Z-Image-Turbo 或 MiniMax-H3-Image 至显存（可与 Qwen3.8-27B 同时常驻）。", "type": "server_error"}},
             )
 
         img_pipe = LOADED_RUNTIMES[img_target_id]["pipeline"]
@@ -8642,7 +8808,9 @@ def attach_macos_api_routes(app: FastAPI):
         with GPU_LOCK:
             for _ in range(n):
                 cur_seed = int(torch.randint(0, 2**31 - 1, (1,)).item())
-                if img_target_id == "z_image_turbo":
+                if img_target_id == "minimax_h3_image":
+                    img = img_pipe(prompt=prompt, width=w, height=h, num_inference_steps=6, seed=cur_seed)
+                elif img_target_id == "z_image_turbo":
                     img = img_pipe(prompt=prompt, width=w, height=h, num_inference_steps=steps, seed=cur_seed, rand_device="cuda")
                 else:
                     img = img_pipe(prompt=prompt, negative_prompt=" ", width=w, height=h, num_inference_steps=steps, seed=cur_seed)
