@@ -369,6 +369,49 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
             ModelFileItem(name: "vae/diffusion_pytorch_model.safetensors", desc: "图像 VAE", exists: false, size_gb: 0)
         ]
     ),
+    // weiwei-custom fork 新增：MiniMax-H3-Image（id 与服务端 app.py MODEL_CATALOG 约定一致）
+    OpenModelSpec(
+        id: "minimax_h3_image",
+        nameZh: "MiniMax-H3-Image",
+        nameEn: "MiniMax-H3-Image",
+        repoId: "MiniMaxAI/MiniMax-H3-Image",
+        badgeZh: "文生图与改图 · 约 68.6 GB（复用 H3 视频编码器）",
+        badgeEn: "Text-to-Image & Edit · ~68.6 GB (shares H3 video encoder)",
+        summaryZh: "MiniMax H3 家族生图版：文生图与指令改图合一，蒸馏 6 步无 CFG，原生高像素直出；文本编码器与 MiniMax-H3 视频版共用，服务端只额外下载 DiT 与 VAE",
+        summaryEn: "Image member of the MiniMax H3 family: unified text-to-image & instruction editing, distilled 6-step no-CFG, native high-resolution output; shares its text encoder with MiniMax-H3 video, so the server only downloads the DiT and VAE",
+        approxSizeGB: 68.6,
+        icon: "photo.artframe",
+        modality: .image,
+        defaultSteps: 6,
+        modes: [
+            TaskModeItem(
+                id: "t2i",
+                titleZh: "高清文生图",
+                titleEn: "HD Text-to-Image",
+                subtitleZh: "原生高像素直出（最高 4096×4096），6 步蒸馏极速生成",
+                subtitleEn: "Native high-res output (up to 4096x4096), distilled 6-step fast generation",
+                icon: "photo.artframe"
+            ),
+            TaskModeItem(
+                id: "i2i_edit",
+                titleZh: "指令改图",
+                titleEn: "Instruction Image Edit",
+                subtitleZh: "上传参考原图，用自然语言指令改局部、换背景或重绘风格",
+                subtitleEn: "Upload a reference image and edit regions, swap backgrounds, or restyle via natural language",
+                icon: "wand.and.rays"
+            )
+        ],
+        defaultFiles: (1...12).map { i in
+            ModelFileItem(
+                name: String(format: "transformer/diffusion_pytorch_model-%05d-of-00012.safetensors", i),
+                desc: "生图 DiT 主干 BF16 \(i)/12",
+                exists: false,
+                size_gb: 0
+            )
+        } + [
+            ModelFileItem(name: "vae/diffusion_pytorch_model.safetensors", desc: "图像 VAE (2.3 GB)", exists: false, size_gb: 0)
+        ]
+    ),
     OpenModelSpec(
         id: "z_image_turbo",
         nameZh: "Z-Image-Turbo",
@@ -447,6 +490,227 @@ let IMAGE_RESOLUTIONS: [ResolutionOption] = [
     ResolutionOption(id: "i_1536_1024", labelZh: "1536 × 1024 (3:2 单反摄影)", labelEn: "1536 × 1024 (3:2 DSLR Photo)", width: 1536, height: 1024)
 ]
 
+// MARK: - 提示词灵感台预设（weiwei-custom fork 移植自旧魔改单文件 EasyColabStudio.swift 第 554–769 行）
+
+struct CinemaCameraPreset: Identifiable, Hashable {
+    let id: String
+    let shortZh: String
+    let shortEn: String
+    let nameZh: String
+    let nameEn: String
+    let sensor: String
+    let lens: String
+    let filter: String
+    let suffix: String
+
+    var shortName: String { L(shortZh, shortEn) }
+    var name: String { L(nameZh, nameEn) }
+}
+
+let CINEMA_CAMERA_PRESETS: [CinemaCameraPreset] = [
+    CinemaCameraPreset(
+        id: "raw_lens",
+        shortZh: "🎞️ 原生直出",
+        shortEn: "🎞️ Raw Lens",
+        nameZh: "🎞️ 原生直出 · 不附加光学后缀 (Raw Unfiltered)",
+        nameEn: "🎞️ Raw Unfiltered · No Optical Suffix",
+        sensor: "Native Pipeline",
+        lens: "Direct Prompt",
+        filter: "None",
+        suffix: ""
+    ),
+    CinemaCameraPreset(
+        id: "iwai_85mm_f12",
+        shortZh: "🌸 岩井俊二 85mm f/1.2L",
+        shortEn: "🌸 Iwai 85mm f/1.2L",
+        nameZh: "🌸 岩井俊二 · 逆光柔焦人像机 (ARRI Alexa 65 + Canon FD 85mm f/1.2L)",
+        nameEn: "🌸 Iwai Shunji · Backlit Soft Portrait (ARRI Alexa 65 + Canon FD 85mm f/1.2L)",
+        sensor: "ARRI Alexa 65 (Open Gate 6.5K)",
+        lens: "Canon FD 85mm f/1.2L Aspherical (Wide Open)",
+        filter: "Tiffen Black Pro-Mist 1/4 + Kodak Portra 400",
+        suffix: ", Captured on ARRI Alexa 65 paired with vintage Canon FD 85mm f/1.2L lens wide open at f/1.2, Tiffen Black Pro-Mist 1/4 soft filter, warm golden hour backlighting creating a glowing amber rim light around hair, translucent porcelain skin with delicate rosy blush and subsurface scattering, ultra-shallow depth of field, creamy dreamy bokeh, soft Tyndall light rays, Kodak Portra 400 film aesthetic, 8K masterpiece cinematography"
+    ),
+    CinemaCameraPreset(
+        id: "wong_kar_wai_anamorphic",
+        shortZh: "🌧️ 王家卫 Cooke 40mm",
+        shortEn: "🌧️ Wong Kar-wai Cooke 40mm",
+        nameZh: "🌧️ 王家卫 × 杜可风 · 变形宽银幕夜雨机 (Alexa Mini LF + Cooke Anamorphic 40mm T2.0)",
+        nameEn: "🌧️ Wong Kar-wai × Doyle · Anamorphic Neon (Alexa Mini LF + Cooke 40mm T2.0)",
+        sensor: "ARRI Alexa Mini LF (2.39:1 Anamorphic)",
+        lens: "Cooke Anamorphic/i SF 40mm T2.0 (Special Flare)",
+        filter: "Kodak Vision3 500T 5219 + Warm Halation",
+        suffix: ", Wong Kar-wai and Christopher Doyle aesthetic, shot on ARRI Alexa Mini LF with vintage Cooke Anamorphic/i 40mm T2.0 lens, creamy oval anamorphic bokeh, subtle horizontal blue-and-gold anamorphic lens flare streaks, rich emerald and crimson-amber neon color grading, 35mm Kodak Vision3 500T film grain, 8K masterpiece"
+    ),
+    CinemaCameraPreset(
+        id: "deakins_imax_65mm",
+        shortZh: "☀️ 迪金斯 IMAX 65mm",
+        shortEn: "☀️ Deakins IMAX 65mm",
+        nameZh: "☀️ 罗杰·迪金斯 · 史诗丁达尔神光机 (IMAX 65mm + Panavision Primo 70)",
+        nameEn: "☀️ Roger Deakins · Epic Volumetric God Rays (IMAX 65mm + Panavision Primo 70)",
+        sensor: "IMAX 15/70mm Film Camera",
+        lens: "Panavision Primo 70 50mm T1.9",
+        filter: "Natural Volumetric Atmosphere + ACEScct",
+        suffix: ", Roger Deakins Academy Award cinematography, shot on IMAX 65mm film camera with Panavision Primo 70 50mm T1.9 lens, breathtaking volumetric god rays and Tyndall light shafts, chiaroscuro golden sculptural lighting, ultra-wide dynamic range, razor-sharp micro-contrast, 8K IMAX theatrical still"
+    ),
+    CinemaCameraPreset(
+        id: "leica_noctilux_f095",
+        shortZh: "💎 徕卡夜神 50mm f/0.95",
+        shortEn: "💎 Leica Noctilux f/0.95",
+        nameZh: "💎 徕卡夜神 · 空气感刀锐奶化机 (Sony Venice 2 8K + Leica Noctilux 50mm f/0.95)",
+        nameEn: "💎 Leica Noctilux · Creamy 3D Pop Portrait (Sony Venice 2 8K + 50mm f/0.95)",
+        sensor: "Sony Venice 2 8.6K Full-Frame",
+        lens: "Leica Noctilux-M 50mm f/0.95 ASPH",
+        filter: "Schneider Hollywood Black Magic 1/8",
+        suffix: ", Shot on Sony Venice 2 8K full-frame cinema camera paired with Leica Noctilux-M 50mm f/0.95 ASPH wide open at f/0.95, signature Leica 3D pop and painterly swirly cat-eye bokeh, luminous catchlights in eyes, flawless natural skin micro-texture with warm subsurface glow, 8K editorial cinema portrait"
+    ),
+    CinemaCameraPreset(
+        id: "shinkai_twilight_panavision",
+        shortZh: "🌌 新海诚暮光 24mm T1.4",
+        shortEn: "🌌 Shinkai Twilight 24mm",
+        nameZh: "🌌 新海诚 · 暮光流云超广角机 (Panavision DXL2 + Primo 24mm T1.4)",
+        nameEn: "🌌 Makoto Shinkai · Twilight Wide-Angle (Panavision DXL2 + Primo 24mm T1.4)",
+        sensor: "Panavision Millennium DXL2 8K Monstro",
+        lens: "Panavision Primo Artiste 24mm T1.4",
+        filter: "Twilight Magic Hour Diffusion",
+        suffix: ", Makoto Shinkai twilight magic hour aesthetic meets live-action Panavision Millennium DXL2 8K cinema camera, 24mm T1.4 wide-angle cinema lens, luminous violet-gold-cobalt cumulus clouds, shimmering lens reflection, ethereal atmospheric perspective, ultra-vivid HDR color harmony, 8K masterpiece"
+    )
+]
+
+struct ArtStylePreset: Identifiable, Hashable {
+    let id: String
+    let nameZh: String
+    let nameEn: String
+    let suffixZh: String
+    let suffixEn: String
+
+    var name: String { L(nameZh, nameEn) }
+    var suffix: String { L(suffixZh, suffixEn) }
+}
+
+let ART_STYLE_PRESETS: [ArtStylePreset] = [
+    ArtStylePreset(id: "none", nameZh: "🎞️ 原生直出", nameEn: "🎞️ Raw Style", suffixZh: "", suffixEn: ""),
+    ArtStylePreset(
+        id: "iwai_cinema",
+        nameZh: "🌸 岩井俊二柔焦胶片",
+        nameEn: "🌸 Iwai Soft Portra 400",
+        suffixZh: "，Captured on ARRI Alexa 65 paired with vintage Canon FD 85mm f/1.2L lens wide open at f/1.2, Tiffen Black Pro-Mist 1/4 soft filter, warm golden hour backlighting creating a glowing amber rim light, translucent porcelain skin with delicate rosy blush and subsurface scattering, ultra-shallow depth of field, creamy dreamy bokeh, Kodak Portra 400 film aesthetic, 8K masterpiece",
+        suffixEn: ", Captured on ARRI Alexa 65 paired with vintage Canon FD 85mm f/1.2L lens wide open at f/1.2, Tiffen Black Pro-Mist 1/4 soft filter, warm golden hour backlighting creating a glowing amber rim light, translucent porcelain skin with delicate rosy blush and subsurface scattering, ultra-shallow depth of field, creamy dreamy bokeh, Kodak Portra 400 film aesthetic, 8K masterpiece"
+    ),
+    ArtStylePreset(
+        id: "wkw_anamorphic",
+        nameZh: "🌧️ 王家卫霓虹宽银幕",
+        nameEn: "🌧️ WKW Anamorphic Neon",
+        suffixZh: "，Wong Kar-wai and Christopher Doyle aesthetic, shot on ARRI Alexa Mini LF with vintage Cooke Anamorphic/i 40mm T2.0 lens, creamy oval anamorphic bokeh, horizontal blue-and-gold lens flare, rich emerald and crimson-amber color grading, 35mm Kodak Vision3 500T film grain, 8K masterpiece",
+        suffixEn: ", Wong Kar-wai and Christopher Doyle aesthetic, shot on ARRI Alexa Mini LF with vintage Cooke Anamorphic/i 40mm T2.0 lens, creamy oval anamorphic bokeh, horizontal blue-and-gold lens flare, rich emerald and crimson-amber color grading, 35mm Kodak Vision3 500T film grain, 8K masterpiece"
+    ),
+    ArtStylePreset(
+        id: "leica_noctilux",
+        nameZh: "💎 徕卡夜神空气人像",
+        nameEn: "💎 Leica Noctilux Portrait",
+        suffixZh: "，Shot on Sony Venice 2 8K paired with Leica Noctilux-M 50mm f/0.95 ASPH wide open, signature Leica 3D pop and swirly cat-eye bokeh, luminous catchlights, flawless natural skin micro-texture with warm subsurface glow, 8K cinema portrait",
+        suffixEn: ", Shot on Sony Venice 2 8K paired with Leica Noctilux-M 50mm f/0.95 ASPH wide open, signature Leica 3D pop and swirly cat-eye bokeh, luminous catchlights, flawless natural skin micro-texture with warm subsurface glow, 8K cinema portrait"
+    ),
+    ArtStylePreset(
+        id: "cinematic",
+        nameZh: "🎬 迪金斯 IMAX 电影感",
+        nameEn: "🎬 Deakins IMAX 65mm",
+        suffixZh: "，Roger Deakins Academy Award cinematography, shot on IMAX 65mm film camera with Panavision Primo 70 50mm T1.9 lens, volumetric god rays, HDR cinematic color grading, 8K theatrical masterpiece",
+        suffixEn: ", Roger Deakins Academy Award cinematography, shot on IMAX 65mm film camera with Panavision Primo 70 50mm T1.9 lens, volumetric god rays, HDR cinematic color grading, 8K theatrical masterpiece"
+    ),
+    ArtStylePreset(
+        id: "ghibli",
+        nameZh: "🌿 吉卜力手绘动画",
+        nameEn: "🌿 Studio Ghibli Watercolor",
+        suffixZh: "，吉卜力工作室手绘动画美术风格，水彩水粉质感背景，柔和明亮的色彩，宫崎骏电影截图级别，Studio Ghibli hand-painted anime art style, lush watercolor background",
+        suffixEn: ", Studio Ghibli hand-painted anime art style, lush watercolor and gouache background texture, warm nostalgic palette, Hayao Miyazaki theatrical film frame"
+    ),
+    ArtStylePreset(
+        id: "pixar",
+        nameZh: "🧸 皮克斯 3D 动画",
+        nameEn: "🧸 Pixar 3D Animation",
+        suffixZh: "，皮克斯迪士尼风格3D动画电影画面，柔和全局光照，次表面散射材质，精致细节，Pixar and Disney 3D feature animation render, soft global illumination",
+        suffixEn: ", Pixar and Disney 3D feature animation style, soft global illumination, expressive character design, rich subsurface scattering, 8K theatrical render"
+    ),
+    ArtStylePreset(
+        id: "ue5",
+        nameZh: "⚔️ 虚幻5 次世代 CG",
+        nameEn: "⚔️ Unreal Engine 5 CG",
+        suffixZh: "，虚幻引擎5实时渲染，次世代3A游戏CG，Lumen全局光照与光线追踪体积雾，史诗级场景，Unreal Engine 5 Lumen ray-tracing cinematic CG",
+        suffixEn: ", Unreal Engine 5 cinematic CG render, Lumen global illumination, ray-traced reflections, volumetric fog, AAA next-gen masterpiece"
+    ),
+    ArtStylePreset(
+        id: "portrait",
+        nameZh: "📸 哈苏中画幅高定",
+        nameEn: "📸 Hasselblad Editorial",
+        suffixZh: "，顶级商业影楼人像摄影，哈苏 H6D-100c 中画幅，HC 100mm f/2.2，柔和伦勃朗轮廓光，真实通透皮肤肌理，Vogue 杂志封面级",
+        suffixEn: ", High-fashion editorial portrait photography, Hasselblad H6D-100c medium format, HC 100mm f/2.2 lens, soft Rembrandt rim lighting, natural skin micro-texture, Vogue cover masterpiece"
+    ),
+    ArtStylePreset(
+        id: "ink",
+        nameZh: "🖌️ 东方水墨流金",
+        nameEn: "🖌️ Chinese Ink & Gold",
+        suffixZh: "，中国传统水墨设色结合盛唐流金工笔美学，留白意境，宣纸肌理，东方诗意电影感，poetic Chinese ink-wash and gold leaf masterpiece",
+        suffixEn: ", Traditional Chinese ink-wash painting fused with Tang Dynasty gold-leaf fine brushwork, poetic negative space, Xuan paper texture, ethereal Eastern cinema aesthetic"
+    )
+]
+
+struct CameraMotionPreset: Identifiable, Hashable {
+    let id: String
+    let nameZh: String
+    let nameEn: String
+    let suffix: String
+
+    var name: String { L(nameZh, nameEn) }
+}
+
+let CAMERA_MOTION_PRESETS: [CameraMotionPreset] = [
+    CameraMotionPreset(id: "none", nameZh: "🎯 默认运镜", nameEn: "🎯 Default Motion", suffix: ""),
+    CameraMotionPreset(
+        id: "flythrough",
+        nameZh: "🚀 单点透视纵深穿行",
+        nameEn: "🚀 One-Point Flythrough",
+        suffix: ", smooth continuous forward dolly-in camera movement gliding steadily down the central one-point perspective axis with strong 3D parallax depth, 24fps gimbal stabilization"
+    ),
+    CameraMotionPreset(
+        id: "orbit",
+        nameZh: "🔄 环绕凝视推镜",
+        nameEn: "🔄 Orbital Tracking",
+        suffix: ", smooth orbital tracking shot circling gracefully around the main subject while slowly pushing in with shallow depth of field"
+    ),
+    CameraMotionPreset(
+        id: "dolly_zoom",
+        nameZh: "🎬 希区柯克抽拉变焦",
+        nameEn: "🎬 Dolly Zoom Push-Pull",
+        suffix: ", dramatic cinematic dolly zoom push-pull camera trajectory smoothly pulling back to reveal the grand environment and pushing forward toward the focal subject"
+    ),
+    CameraMotionPreset(
+        id: "crane_rise",
+        nameZh: "🦅 摇臂升空俯瞰",
+        nameEn: "🦅 Crane Rise Reveal",
+        suffix: ", majestic cinematic crane shot rising vertically from low angle to reveal the vast panoramic horizon with volumetric lighting"
+    ),
+    CameraMotionPreset(
+        id: "fpv_dive",
+        nameZh: "⚡ FPV 穿越机俯冲",
+        nameEn: "⚡ FPV Drone Dive",
+        suffix: ", dynamic high-speed FPV drone dive weaving smoothly through foreground structures with natural motion blur and exhilarating depth"
+    ),
+    CameraMotionPreset(
+        id: "slow_track",
+        nameZh: "🌊 升格慢镜横移跟拍",
+        nameEn: "🌊 Slow-Mo Lateral Track",
+        suffix: ", fluid Steadicam lateral tracking shot gliding parallel to the subject in dreamy slow-motion cadence, floating particles and hair movement"
+    ),
+    CameraMotionPreset(
+        id: "static_master",
+        nameZh: "🖼️ 大师固定长镜头",
+        nameEn: "🖼️ Static Master Shot",
+        suffix: ", locked-off tripod cinema master shot with subtle natural subject motion, gentle breeze, and shifting volumetric light rays"
+    )
+]
+
+// weiwei-custom fork 修改：为提示词灵感台扩展 PresetTemplate（新增 shortZh/shortEn/cameraId/universalScene，
+// 均带默认值，上游既有模板调用点无需改动）；灵感台数据结构移植自旧魔改单文件 EasyColabStudio.swift。
 struct PresetTemplate: Identifiable {
     let id: String
     let category: ModelModality
@@ -456,7 +720,40 @@ struct PresetTemplate: Identifiable {
     let visualEn: String
     let soundscape: String
     let music: String
+    let shortZh: String
+    let shortEn: String
+    let cameraId: String
+    let universalScene: Bool
 
+    init(
+        id: String,
+        category: ModelModality,
+        nameZh: String,
+        nameEn: String,
+        visualZh: String,
+        visualEn: String,
+        soundscape: String = "",
+        music: String = "",
+        shortZh: String = "",
+        shortEn: String = "",
+        cameraId: String = "raw_lens",
+        universalScene: Bool = false
+    ) {
+        self.id = id
+        self.category = category
+        self.shortZh = shortZh.isEmpty ? nameZh : shortZh
+        self.shortEn = shortEn.isEmpty ? nameEn : shortEn
+        self.nameZh = nameZh
+        self.nameEn = nameEn
+        self.visualZh = visualZh
+        self.visualEn = visualEn
+        self.soundscape = soundscape
+        self.music = music
+        self.cameraId = cameraId
+        self.universalScene = universalScene
+    }
+
+    var shortName: String { L(shortZh, shortEn) }
     var name: String { L(nameZh, nameEn) }
     var visual: String { L(visualZh, visualEn) }
 }
@@ -531,7 +828,190 @@ let PRESET_TEMPLATES: [PresetTemplate] = [
         visualEn: "Carefully analyze the subject, lighting, color palette, camera framing, and artistic style of this image. First give a concise visual breakdown, then write a high-quality English image/video generation prompt.",
         soundscape: "",
         music: ""
+    ),
+    // ── WorldForge 12 大师级镜头与场景母版（weiwei-custom fork 移植自旧魔改单文件） ──
+    PresetTemplate(
+        id: "wf_kamakura_sakura",
+        category: .videoAudio,
+        shortZh: "🌸 镰仓夕阳樱花少女",
+        shortEn: "🌸 Kamakura Sakura Muse",
+        nameZh: "🌸 镰仓夕阳 · 逆光樱花少女 (岩井俊二 85mm f/1.2L)",
+        nameEn: "🌸 Kamakura Sunset · Backlit Sakura Girl (Iwai 85mm f/1.2L)",
+        visualZh: "春日黄昏的镰仓木质车站，漫天樱花花瓣在夕阳逆光中缓慢飘落。一位清冷绝美的年轻东方女子身着轻盈丝质白裙，微风轻轻吹起她散落的栗色长发，她缓缓转头看向镜头，双眸清澈含光，白皙通透的脸颊带着淡淡的粉红红晕。Captured on ARRI Alexa 65 paired with vintage Canon FD 85mm f/1.2L lens wide open at f/1.2, Tiffen Black Pro-Mist 1/4 soft filter, warm golden hour backlighting creating a glowing amber rim light around her hair, translucent porcelain skin with delicate rosy blush and subsurface scattering, ultra-shallow depth of field, creamy dreamy bokeh, soft Tyndall light rays, Kodak Portra 400 film aesthetic, 8K masterpiece cinematography",
+        visualEn: "A wooden train station in Kamakura at spring sunset, cherry blossom petals drifting slowly in golden hour backlight. A serene young East Asian woman in a flowing white silk dress turns gently toward the camera as a warm breeze lifts her chestnut hair, clear luminous eyes and translucent porcelain skin with a delicate rosy blush. Captured on ARRI Alexa 65 paired with vintage Canon FD 85mm f/1.2L lens wide open at f/1.2, Tiffen Black Pro-Mist 1/4 soft filter, glowing amber rim light, ultra-shallow depth of field, creamy dreamy bokeh, Kodak Portra 400 film aesthetic, 8K masterpiece cinematography",
+        soundscape: "Gentle spring breeze rustling through cherry blossom branches, distant nostalgic wooden train station bell chiming softly, soft rustle of silk dress.",
+        music: "Tender Iwai Shunji style solo acoustic piano melody with warm nostalgic strings.",
+        cameraId: "iwai_85mm_f12",
+        universalScene: true
+    ),
+    PresetTemplate(
+        id: "wf_wkw_neon_rain",
+        category: .videoAudio,
+        shortZh: "🌧️ 花样年华霓虹雨窗",
+        shortEn: "🌧️ WKW Neon Rain Window",
+        nameZh: "🌧️ 花样年华 · 霓虹夜雨窗畔佳人 (王家卫 Cooke 40mm)",
+        nameEn: "🌧️ In the Mood for Love · Neon Rain Window (WKW Cooke 40mm)",
+        visualZh: "凌晨两点的香港霓虹雨夜，复古旅馆窗前雨滴沿着玻璃缓缓滑落，窗外翠绿与绯红色的霓虹灯牌在湿漉漉的街面晕染开迷离光斑。一位身姿曼妙的绝美东方女子斜倚在窗边，暖黄台灯与冷色霓虹在她细腻白皙微泛粉晕的脸庞与锁骨上交织出唯美光影，眼神迷离而深邃。Wong Kar-wai and Christopher Doyle aesthetic, shot on ARRI Alexa Mini LF with vintage Cooke Anamorphic/i 40mm T2.0 lens, creamy oval anamorphic bokeh, subtle horizontal blue-and-gold anamorphic lens flare streaks, rich emerald and crimson-amber color grading, 35mm Kodak Vision3 500T film grain, 8K masterpiece",
+        visualEn: "2 AM rain-streaked vintage hotel window in Hong Kong, raindrops sliding down the glass as emerald and crimson neon signs blur into dreamy bokeh across the wet street outside. An elegant East Asian woman leans softly by the window, warm tungsten lamp light and cool neon reflections weaving across her porcelain face and collarbone, wistful cinematic gaze. Wong Kar-wai and Christopher Doyle aesthetic, shot on ARRI Alexa Mini LF with vintage Cooke Anamorphic/i 40mm T2.0 lens, creamy oval anamorphic bokeh, horizontal blue-and-gold lens flare streaks, 35mm Kodak Vision3 500T film grain, 8K masterpiece",
+        soundscape: "Soft midnight rain tapping against window glass, distant muffled Hong Kong street traffic on wet asphalt, a quiet contemplative sigh.",
+        music: "Melancholic slow waltz on solo violin and cello in the style of Shigeru Umebayashi (In the Mood for Love).",
+        cameraId: "wong_kar_wai_anamorphic",
+        universalScene: true
+    ),
+    PresetTemplate(
+        id: "wf_golden_sea_muse",
+        category: .videoAudio,
+        shortZh: "🌊 橘子海日落少女",
+        shortEn: "🌊 Golden Sunset Sea Muse",
+        nameZh: "🌊 橘子海日落 · 逆光海风长发少女 (徕卡夜神 50mm f/0.95)",
+        nameEn: "🌊 Amber Sea Sunset · Backlit Ocean Breeze (Leica Noctilux f/0.95)",
+        visualZh: "日落时分的金色橘子海海滩，破碎的波浪闪烁着碎钻般的琥珀金光。一位绝美温柔的年轻少女赤足立于浅浪之中，海风拂起她灵动的长发与雪白轻纱裙摆，夕阳余晖穿透发丝勾勒出柔和金边，回眸一笑清澈动人，肌肤如羊脂白玉般通透。Shot on Sony Venice 2 8K paired with Leica Noctilux-M 50mm f/0.95 ASPH wide open, Tiffen Black Pro-Mist 1/4, golden hour rim lighting, dreamy swirly bokeh of glittering ocean waves, 8K cinema masterpiece",
+        visualEn: "Golden sunset beach where breaking ocean waves sparkle like crushed amber diamonds. A graceful young woman stands barefoot in the shallow surf as the sea breeze lifts her flowing hair and white chiffon dress, sunset rays outlining her hair in warm gold as she looks back with a radiant smile. Shot on Sony Venice 2 8K paired with Leica Noctilux-M 50mm f/0.95 ASPH wide open, Tiffen Black Pro-Mist 1/4, golden hour rim lighting, dreamy swirly bokeh of glittering ocean waves, 8K cinema masterpiece",
+        soundscape: "Gentle ocean waves lapping against the sandy shore, warm coastal breeze, distant seagulls crying softly in the sunset.",
+        music: "Warm dreamy indie acoustic guitar and ambient synth pad.",
+        cameraId: "leica_noctilux_f095",
+        universalScene: true
+    ),
+    PresetTemplate(
+        id: "wf_jiangnan_misty_boat",
+        category: .videoAudio,
+        shortZh: "🛶 烟雨江南乌篷船",
+        shortEn: "🛶 Misty Jiangnan Boat",
+        nameZh: "🛶 烟雨江南 · 乌篷船头撑伞回眸 (迪金斯 IMAX 65mm)",
+        nameEn: "🛶 Misty Jiangnan · Oil-Paper Umbrella on Wooden Boat (Deakins IMAX)",
+        visualZh: "清晨烟雨蒙蒙的江南水乡古镇，青石拱桥下碧水如镜，薄雾与炊烟在河面缓缓流淌。一叶乌篷船轻轻划过水面，船头立着一位身着素雅宋制汉服的清丽江南女子，手执油纸伞微微抬眸，晨曦金光穿透薄雾洒落。Roger Deakins IMAX 65mm cinematography, Panavision Primo 70 50mm T1.9 lens, volumetric morning mist and soft god rays, poetic Chinese ink-and-gold color palette, 8K masterpiece",
+        visualEn: "Misty dawn in an ancient Jiangnan water town, emerald canal water beneath a stone arch bridge with morning fog drifting softly. A traditional wooden boat glides across the water as a graceful woman in Song Dynasty Hanfu stands at the bow holding an oil-paper umbrella, golden dawn rays piercing the mist. Roger Deakins IMAX 65mm cinematography, Panavision Primo 70 50mm T1.9 lens, volumetric morning mist and soft god rays, poetic Chinese ink-and-gold color palette, 8K masterpiece",
+        soundscape: "Wooden oar gently dipping into calm canal water, light spring drizzle pattering on an oil-paper umbrella, distant morning birdsong.",
+        music: "Poetic Chinese guzheng and bamboo flute xiao melody echoing softly over water.",
+        cameraId: "deakins_imax_65mm",
+        universalScene: true
+    ),
+    PresetTemplate(
+        id: "wf_ghibli_laputa",
+        category: .videoAudio,
+        shortZh: "🏰 宫崎骏天空之城",
+        shortEn: "🏰 Ghibli Floating Castle",
+        nameZh: "🏰 宫崎骏 · 天空之城浮岛花海 (单点透视穿梭)",
+        nameEn: "🏰 Studio Ghibli · Laputa Floating Sky Island (Perspective Flythrough)",
+        visualZh: "宫崎骏《天空之城》风格的漂浮天空之岛，晴朗夏日，湛蓝天空堆满巨大洁白积云，一条长满青草与小野花的古老石板小路从画面正下方中央笔直延伸向远方，两侧是爬满藤蔓的古老石拱门一座接一座排成长廊，尽头是被巨大古树覆盖的圆形古城堡，岛边小瀑布流向云海，单点透视，层次丰富，吉卜力手绘动画美术风格，原生2K",
+        visualEn: "Studio Ghibli Castle in the Sky style floating island on a bright summer day, towering white cumulus clouds in a deep cobalt sky. An ancient grassy stone path with wildflowers extends straight from bottom center in one-point perspective through a corridor of ivy-covered stone arches toward a circular ancient ruin crowned by a giant tree, small waterfalls cascading into the cloud sea, rich hand-painted anime background, 8K masterpiece",
+        soundscape: "High-altitude summer wind sweeping through tall grass and wildflowers, gentle waterfall cascading into clouds, distant singing birds.",
+        music: "Joe Hisaishi style sweeping symphonic orchestra with nostalgic trumpet and piano main theme.",
+        cameraId: "shinkai_twilight_panavision",
+        universalScene: true
+    ),
+    PresetTemplate(
+        id: "wf_torii_maple",
+        category: .videoAudio,
+        shortZh: "⛩️ 京都千本鸟居红枫",
+        shortEn: "⛩️ Kyoto Torii & Maples",
+        nameZh: "⛩️ 千本鸟居 · 京都深秋红枫神道 (迪金斯丁达尔神光)",
+        nameEn: "⛩️ Fushimi Inari · Vermilion Torii & Autumn Maples (Deakins God Rays)",
+        visualZh: "深秋京都伏见稻荷，成千上万座朱红色鸟居层层叠叠组成的幽深隧道，沿着长满青苔的石阶一路向山林深处延伸，鸟居外是燃烧般火红与金黄的枫叶，金色夕阳光束从缝隙间穿透，薄雾弥漫，单点透视，电影级实拍质感，原生2K",
+        visualEn: "Late autumn at Fushimi Inari Kyoto, an endless tunnel of thousands of vermilion torii gates ascending mossy stone steps into the mountain forest, surrounded by blazing crimson and golden maple leaves, golden sunset Tyndall light beams piercing through the gaps in soft mist, one-point perspective, 8K IMAX cinematography",
+        soundscape: "Soft mountain breeze rustling autumn maple leaves, distant shishi-odoshi bamboo water fountain clacking, serene forest ambiance.",
+        music: "Zen Japanese koto and shakuhachi flute with warm ambient strings.",
+        cameraId: "deakins_imax_65mm",
+        universalScene: true
+    ),
+    PresetTemplate(
+        id: "wf_lost_temple",
+        category: .videoAudio,
+        shortZh: "🏛️ 雨林失落神殿",
+        shortEn: "🏛️ Jungle Lost Temple",
+        nameZh: "🏛️ 雨林失落神殿 · 丁达尔神光峡谷 (IMAX 史诗场景)",
+        nameEn: "🏛️ Rainforest Lost Temple · Volumetric Canyon (IMAX Epic)",
+        visualZh: "被热带雨林吞没的远古失落神殿峡谷，古老石板步道穿过两侧巨型石刻神像与爬满藤蔓的石柱长廊，延伸向远处巨大的金字塔神殿，瀑布从悬崖倾泻，丁达尔光柱，薄雾缭绕，单点透视，电影级实拍质感，原生2K",
+        visualEn: "An ancient lost temple canyon swallowed by tropical rainforest, a weathered stone causeway passing between colossal carved guardian statues and vine-draped pillars toward a giant stepped pyramid temple in the distance, waterfalls plunging down cliffs, dramatic volumetric god rays piercing jungle mist, one-point perspective, 8K IMAX cinematography",
+        soundscape: "Distant thundering jungle waterfalls, exotic tropical birds echoing through the canyon, water droplets dripping from moss-covered stone.",
+        music: "Majestic adventure orchestral score with deep brass, tribal percussion, and ethereal choir.",
+        cameraId: "deakins_imax_65mm",
+        universalScene: true
+    ),
+    PresetTemplate(
+        id: "wf_ice_palace",
+        category: .videoAudio,
+        shortZh: "❄️ 极光冰晶宫殿",
+        shortEn: "❄️ Aurora Ice Palace",
+        nameZh: "❄️ 极光冰晶宫殿 · 凛冬银河圣殿",
+        nameEn: "❄️ Aurora Crystal Ice Palace · Winter Galaxy Sanctuary",
+        visualZh: "极光之夜的冰雪水晶宫殿长廊，晶莹冰面长廊两侧是高耸的冰晶柱与冰雕拱门层层向远方延伸，冰柱透出幽蓝青绿光芒，天空绚烂极光，远处巨大冰晶城堡，单点透视，原生2K",
+        visualEn: "A grand translucent crystal ice palace corridor beneath a starry arctic night sky ablaze with emerald and violet aurora borealis, mirror-like ice floor flanked by towering carved ice pillars and arches glowing with cyan internal light, leading toward a colossal ice citadel, one-point perspective, 8K masterpiece",
+        soundscape: "Crystalline wind chiming softly through ice arches, subtle glacial resonance, crisp arctic night air.",
+        music: "Ethereal celesta, glass harp, and soaring Nordic choir.",
+        cameraId: "shinkai_twilight_panavision",
+        universalScene: true
+    ),
+    PresetTemplate(
+        id: "wf_lantern_town",
+        category: .videoAudio,
+        shortZh: "🏮 千灯古镇盛唐水乡",
+        shortEn: "🏮 Thousand-Lantern Town",
+        nameZh: "🏮 千灯古镇长街 · 盛唐不夜水乡",
+        nameEn: "🏮 Thousand-Lantern Ancient Water Town · Tang Dynasty Night",
+        visualZh: "夜晚的中国古风水乡长街，青石板路沿河道延伸向远方，两侧层层叠叠的木结构古楼挂满成百上千盏暖红灯笼，石拱桥横跨河面，远处灯火辉煌的高塔，单点透视，原生2K",
+        visualEn: "Nighttime in a grand ancient Chinese water town, wet bluestone street running alongside a glowing canal, multi-tiered wooden pavilions on both sides hung with thousands of warm red lanterns reflecting in the water, stone arch bridges and a golden illuminated pagoda in the distance, one-point perspective, 8K masterpiece",
+        soundscape: "Gentle canal water lapping against stone embankments, soft evening breeze swaying silk lanterns, distant festive pipa lute notes.",
+        music: "Grand Tang Dynasty orchestral court music with pipa, guzheng, and warm cinematic strings.",
+        cameraId: "wong_kar_wai_anamorphic",
+        universalScene: true
+    ),
+    PresetTemplate(
+        id: "wf_cyber_alley",
+        category: .videoAudio,
+        shortZh: "🌃 赛博朋克霓虹雨巷",
+        shortEn: "🌃 Cyberpunk Rain Alley",
+        nameZh: "🌃 赛博朋克雨夜 · 银翼杀手霓虹窄巷",
+        nameEn: "🌃 Cyberpunk Rainy Night · Blade Runner Neon Alley",
+        visualZh: "雨夜赛博朋克未来都市窄巷，湿漉漉街道倒映漫天霓虹，两侧高楼贴满巨大全息广告牌，空中交错电缆与天桥，巷子尽头耸入云霄的巨型摩天楼，单点透视，原生2K",
+        visualEn: "Rain-soaked cyberpunk metropolis narrow alley at night, wet asphalt mirroring vibrant cyan and magenta holographic billboards on towering megastructures, crisscrossing overhead cables and skybridges, a colossal megatower rising into storm clouds at the end of the corridor, Blade Runner 2049 cinematography, 8K",
+        soundscape: "Heavy rain pouring onto neon-lit asphalt, low hum of futuristic neon transformers and distant spinner aircraft overhead.",
+        music: "Vangelis & Hans Zimmer style deep analog synthesizer bass and atmospheric cyberpunk pad.",
+        cameraId: "wong_kar_wai_anamorphic",
+        universalScene: true
+    ),
+    PresetTemplate(
+        id: "wf_underwater_atlantis",
+        category: .videoAudio,
+        shortZh: "🌊 深海亚特兰蒂斯",
+        shortEn: "🌊 Underwater Atlantis",
+        nameZh: "🌊 深海亚特兰蒂斯 · 水下圣殿丁达尔光束",
+        nameEn: "🌊 Underwater Atlantis · Submerged Marble Sanctuary",
+        visualZh: "幽蓝深海下的亚特兰蒂斯古老大理石神殿长廊，洁白石板大道从画面正下方笔直通向远方发光的巨型圆顶水下圣殿，两侧是缠绕着发光珊瑚与海藻的科林斯石柱拱门，阳光透过海水形成壮丽的丁达尔光束，单点透视，原生2K",
+        visualEn: "Submerged ancient Atlantis marble colonnade on the deep sapphire ocean floor, a white stone avenue leading straight toward a glowing domed underwater sanctuary, flanked by Corinthian pillars draped in bioluminescent coral and kelp, dramatic underwater sunbeams piercing the deep blue water, one-point perspective, 8K",
+        soundscape: "Deep resonant underwater currents, gentle rising bubble streams, distant whale song echoing through the ocean depths.",
+        music: "Mystical ambient synthesizer and harp with deep oceanic sub-bass.",
+        cameraId: "deakins_imax_65mm",
+        universalScene: true
+    ),
+    PresetTemplate(
+        id: "wf_dunhuang_grotto",
+        category: .videoAudio,
+        shortZh: "✨ 敦煌鎏金飞天石窟",
+        shortEn: "✨ Dunhuang Gilded Grotto",
+        nameZh: "✨ 敦煌鎏金石窟 · 盛唐飞天佛殿",
+        nameEn: "✨ Dunhuang Gilded Grotto · Tang Dynasty Celestial Hall",
+        visualZh: "恢弘壮丽的盛唐敦煌莫高窟皇家佛殿长廊，地面铺设发光青金石地砖从正下方笔直延伸向远方，两侧是绘满绚丽飞天壁画与悬浮金色藻井的朱红雕花木柱拱廊，尽头是一尊庄严宏伟的鎏金巨佛坐像，金色体积光柱穿透殿堂，单点透视，原生2K",
+        visualEn: "Magnificent Tang Dynasty Dunhuang Mogao royal cave temple corridor, glowing lapis lazuli floor tiles extending straight in one-point perspective between vermilion carved pillars painted with vibrant flying apsaras murals and golden caisson ceilings, leading to a colossal gilded Buddha statue bathed in golden volumetric light shafts, 8K masterpiece",
+        soundscape: "Deep resonant bronze temple bell chime echoing in a vast stone hall, subtle fluttering of silk banners.",
+        music: "Sacred Dunhuang ancient pipa,konghou harp, and ethereal Buddhist choir.",
+        cameraId: "deakins_imax_65mm",
+        universalScene: true
+    ),
+    // ── 导演扩写模板（weiwei-custom fork 移植自旧魔改单文件） ──
+    PresetTemplate(
+        id: "tpl_llm_cinema_director",
+        category: .llmVLM,
+        shortZh: "🎥 岩井俊二/王家卫电影扩写",
+        shortEn: "🎥 Iwai / WKW Cinema Director",
+        nameZh: "[导演] 用 ARRI 电影摄影机光学语言扩写生图/音视频提示词",
+        nameEn: "[Director] Expand Scene into ARRI / Cooke Anamorphic Cinema Prompts",
+        visualZh: "你现在是顶级电影摄影指导（熟悉岩井俊二 ARRI Alexa 65 + Canon FD 85mm f/1.2L 逆光柔焦、王家卫 Cooke Anamorphic 40mm 变形宽银幕、罗杰·迪金斯 IMAX 65mm 丁达尔体积光、徕卡 Noctilux 50mm f/0.95）。请以「雨后黄昏的江南古镇茶馆或东京街角」为主题，为我编写 2 组可直接用于生图与音视频同生的大师级中英双语 Prompt（包含机身镜头参数、光影构图、环境音效 Soundscape 与配乐 Music）。",
+        visualEn: "Act as a master cinematographer well-versed in ARRI Alexa 65 + Canon FD 85mm f/1.2L (Iwai Shunji), Cooke Anamorphic 40mm (Wong Kar-wai), IMAX 65mm (Roger Deakins), and Leica Noctilux 50mm f/0.95. Create 2 master-level image & audio-video prompts with full camera/lens/filter suffixes, Soundscape foley, and Background Music.",
+        soundscape: "",
+        music: ""
     )
+
 ]
 
 // MARK: - 网络协议结构

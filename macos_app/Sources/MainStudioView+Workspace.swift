@@ -1146,10 +1146,10 @@ extension MainStudioView {
             }
         case "i2i_edit":
             WorkspaceCard(
-                title: vm.selectedModelId == "qwen_image_21"
+                title: (vm.selectedModelId == "qwen_image_21" || vm.selectedModelId == "minimax_h3_image")
                     ? L("指令修图参考原图", "Instruction Image-Editing References")
                     : L("图生图重绘参考底图", "Image-to-Image Reference"),
-                subtitle: vm.selectedModelId == "qwen_image_21"
+                subtitle: (vm.selectedModelId == "qwen_image_21" || vm.selectedModelId == "minimax_h3_image")
                     ? L("支持上传 1~2 张参考图进行局部编辑、换背景或多主体融合", "Upload 1–2 reference images for local edits, background swaps, or multi-subject fusion")
                     : L("上传参考原图并在左侧调节重绘幅度", "Upload a reference image and tune Denoising Strength in the left sidebar"),
                 icon: "wand.and.rays"
@@ -1160,7 +1160,7 @@ extension MainStudioView {
                         subtitle: L("拖入待编辑原图", "Drop source image to edit"),
                         image: $vm.firstFrameImage
                     )
-                    if vm.selectedModelId == "qwen_image_21" {
+                    if vm.selectedModelId == "qwen_image_21" || vm.selectedModelId == "minimax_h3_image" {
                         FrameDropWell(
                             title: L("融合参考图 2 (可选)", "Fusion Reference 2 (Optional)"),
                             subtitle: L("用于多图主体融合编辑", "For multi-image subject fusion"),
@@ -1204,10 +1204,12 @@ extension MainStudioView {
                 return L("问题与指令输入", "Message & Instruction Input")
             case .image:
                 return vm.taskModeId == "i2i_edit"
-                    ? L("修图指令与画面描述", "Editing Instruction & Scene Prompt")
-                    : L("图像画面提示词", "Image Prompt")
-            case .videoAudio, .video, .comfyUI:
-                return L("镜头与多模态提示词", "Camera & Multimodal Prompts")
+                    ? L("修图指令与大师镜头提示词", "Editing Instruction & Cinema Prompt")
+                    : L("图像画面与大师摄影机提示词", "Image & Cinema Camera Prompt")
+            case .comfyUI:
+                return L("ComfyUI 电影级提示词与镜头灵感台（可一键复制至画布）", "ComfyUI Cinema Prompt & Lens Workbench (1-Click Copy)")
+            case .videoAudio, .video:
+                return L("电影镜头、多模态音轨与灵感提示词", "Cinema Lens, Audio & Multimodal Prompts")
             }
         }()
 
@@ -1218,13 +1220,130 @@ extension MainStudioView {
             case .image:
                 return vm.taskModeId == "i2i_edit"
                     ? L("描述你想修改的细节（例如：把背景换成夕阳海滩，保留人物光影）...", "Describe your edit (e.g. replace background with a sunset beach while preserving lighting)...")
-                    : L("描述主体、构图、镜头景别、光影色调与文字排版...", "Describe subject, composition, lighting, lens style, and typography...")
+                    : L("描述主体、构图、镜头景别、光影色调与文字排版（或点击上方灵感芯片一键填入）...", "Describe subject, composition, lighting, lens style, and typography...")
             case .videoAudio, .video, .comfyUI:
-                return L("描述画面主体运动、镜头推拉摇移、光影氛围与电影质感...", "Describe subject motion, camera movement, lighting, and cinematic style...")
+                return L("描述画面主体运动、镜头推拉摇移、光影氛围与电影质感（或点击上方灵感芯片一键填入）...", "Describe subject motion, camera movement, lighting, and cinematic style...")
             }
         }()
 
-        return WorkspaceCard(title: cardTitle, icon: "text.alignleft") {
+        // 提示词灵感台头部工具条（weiwei-custom fork 移植自旧魔改单文件：Qwen 扩写 / 随机灵感 / 复制 / 清空 / 展开镜头库）
+        let headerTrailing = AnyView(
+            HStack(spacing: 6) {
+                if mod != .llmVLM {
+                    Button {
+                        Task { await vm.expandPromptWithQwen() }
+                    } label: {
+                        HStack(spacing: 5) {
+                            if vm.isExpandingPromptWithQwen {
+                                ProgressView()
+                                    .controlSize(.mini)
+                            } else {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            Text(vm.isExpandingPromptWithQwen
+                                 ? L("Qwen 扩写中...", "Expanding...")
+                                 : L("Qwen 导演扩写", "Qwen Expand"))
+                                .font(.system(size: 11.5, weight: .semibold))
+                            Circle()
+                                .fill(vm.isQwenLoadedInVRAM ? Color.green : Color.orange.opacity(0.75))
+                                .frame(width: 6, height: 6)
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.accentColor.opacity(0.14)))
+                        .overlay(Capsule().strokeBorder(Color.accentColor.opacity(0.38), lineWidth: 0.8))
+                        .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(vm.isExpandingPromptWithQwen)
+                    .help(vm.isQwenLoadedInVRAM
+                          ? L("调用已常驻显存的 Qwen3.8-27B，结合当前选中的电影摄影机光学镜头一键扩写画面与音轨提示词", "Use VRAM-resident Qwen3.8-27B + selected cinema camera optics to expand visual & audio prompts")
+                          : L("在左侧将 Qwen3.8-27B (推荐 GGUF 版) 加载到显存后，即可一键智能扩写大师级提示词", "Load Qwen3.8-27B (GGUF recommended) into VRAM on the left to enable 1-click AI prompt expansion"))
+
+                    Button {
+                        vm.pickRandomSceneInspiration()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "dice")
+                                .font(.system(size: 11, weight: .medium))
+                            Text(L("随机灵感", "Random"))
+                                .font(.system(size: 11.5, weight: .medium))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.primary.opacity(0.06)))
+                    }
+                    .buttonStyle(.plain)
+                    .help(L("从大师场景母版中随机抽取一组填入", "Pick a random master scene template"))
+                }
+
+                Button {
+                    copyToPasteboard(vm.visualPrompt, tip: L("📋 已复制当前画面提示词到剪贴板", "📋 Copied visual prompt to clipboard"))
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 10.5, weight: .medium))
+                        Text(L("复制", "Copy"))
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.primary.opacity(0.06)))
+                }
+                .buttonStyle(.plain)
+                .help(L("复制主提示词到剪贴板", "Copy visual prompt to clipboard"))
+
+                Button {
+                    vm.visualPrompt = ""
+                    if mod == .videoAudio {
+                        vm.soundscapePrompt = ""
+                        vm.musicPrompt = ""
+                    }
+                    vm.selectedCinemaCameraId = "raw_lens"
+                    vm.selectedArtStyleId = "none"
+                    vm.selectedCameraMotionId = "none"
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.primary.opacity(0.06)))
+                }
+                .buttonStyle(.plain)
+                .help(L("清空提示词与已选镜头后缀", "Clear prompt and active lens suffixes"))
+
+                if mod != .llmVLM {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            vm.showInspirationStudio.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "camera.aperture")
+                                .font(.system(size: 11, weight: .medium))
+                            Text(vm.showInspirationStudio ? L("收起镜头库", "Hide Lenses") : L("展开镜头库", "Show Lenses"))
+                                .font(.system(size: 11, weight: .medium))
+                            Image(systemName: vm.showInspirationStudio ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundStyle(vm.showInspirationStudio ? Color.accentColor : Color.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.primary.opacity(0.06)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        )
+
+        return WorkspaceCard(title: cardTitle, icon: "text.alignleft", trailing: headerTrailing) {
+            if mod == .llmVLM {
+                llmQuickInspirationRow(palette: palette)
+            } else if vm.showInspirationStudio {
+                cinemaInspirationWorkbench(palette: palette)
+            }
             promptEditor(
                 title: mod == .llmVLM
                     ? L("对话内容 / 视觉提问", "Chat Message / Vision Question")
@@ -1281,6 +1400,264 @@ extension MainStudioView {
             }
         }
     }
+
+    // MARK: - 提示词灵感台 UI（weiwei-custom fork 移植自旧魔改单文件 EasyColabStudio.swift 第 8475–8729 行）
+
+    private func llmQuickInspirationRow(palette: StudioPalette) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                ForEach(vm.matchingTemplatesForActiveModality) { tpl in
+                    let isSelected = vm.visualPrompt == tpl.visual
+                    Button {
+                        vm.applySceneTemplate(tpl)
+                    } label: {
+                        Text(tpl.shortName)
+                            .font(.system(size: 11.5, weight: isSelected ? .semibold : .regular))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(
+                                Capsule()
+                                    .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.primary.opacity(0.05))
+                            )
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(isSelected ? Color.accentColor.opacity(0.55) : palette.cardBorder, lineWidth: 0.8)
+                            )
+                            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func cinemaInspirationWorkbench(palette: StudioPalette) -> some View {
+        let mod = vm.activeModelSpec.modality
+        let cam = vm.activeCinemaCamera
+        let tabs: [(Int, String, String)] = [
+            (0, "sparkles.rectangle.stack", L("大师场景母版 (17)", "Master Scenes (17)")),
+            (1, "camera.aperture", L("电影摄影机与光学镜头 (6)", "Cinema Cameras & Lenses (6)")),
+            (2, "Theatermasks.fill".lowercased() == "theatermasks.fill" ? "paintpalette" : "paintpalette",
+             (mod == .videoAudio || mod == .video || mod == .comfyUI)
+                ? L("画风胶片 (10) & 电影运镜 (8)", "Art Styles (10) & Motion (8)")
+                : L("画风与胶片滤镜 (10)", "Art Styles & Film Stock (10)"))
+        ]
+
+        return VStack(alignment: .leading, spacing: 9) {
+            // 顶部子标签切换 + 当前激活的摄影机光学参数徽章
+            HStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    ForEach(tabs, id: \.0) { item in
+                        let selected = vm.inspirationCategoryTab == item.0
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.14)) {
+                                vm.inspirationCategoryTab = item.0
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: item.1)
+                                    .font(.system(size: 10.5, weight: .semibold))
+                                Text(item.2)
+                                    .font(.system(size: 11, weight: selected ? .semibold : .medium))
+                            }
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4.5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(selected ? Color.accentColor.opacity(0.16) : Color.clear)
+                            )
+                            .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(2)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.primary.opacity(0.05))
+                )
+
+                Spacer()
+
+                if cam.id != "raw_lens" {
+                    HStack(spacing: 5) {
+                        Image(systemName: "Video.fill".lowercased() == "video.fill" ? "camera.metering.center.weighted" : "camera")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color.accentColor)
+                        Text("\(cam.shortName) · \(cam.filter)")
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3.5)
+                    .background(
+                        Capsule()
+                            .fill(Color.accentColor.opacity(0.08))
+                    )
+                }
+            }
+
+            if vm.inspirationCategoryTab == 0 {
+                // Tab 0: 17 组大师场景母版（含 WorldForge 12 组标志性电影场景 + 音效配乐）
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 7) {
+                        ForEach(vm.matchingTemplatesForActiveModality) { tpl in
+                            let isCurrent = vm.visualPrompt.hasPrefix(String(tpl.visual.prefix(24)))
+                            Button {
+                                vm.applySceneTemplate(tpl)
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(tpl.shortName)
+                                        .font(.system(size: 11.5, weight: isCurrent ? .semibold : .regular))
+                                    if tpl.cameraId != "raw_lens" {
+                                        Image(systemName: "camera.aperture")
+                                            .font(.system(size: 9.5))
+                                            .foregroundStyle(isCurrent ? Color.accentColor : .secondary.opacity(0.75))
+                                    }
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5.5)
+                                .background(
+                                    Capsule()
+                                        .fill(isCurrent ? Color.accentColor.opacity(0.16) : Color.primary.opacity(0.05))
+                                )
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(isCurrent ? Color.accentColor.opacity(0.55) : palette.cardBorder, lineWidth: 0.8)
+                                )
+                                .foregroundStyle(isCurrent ? Color.accentColor : Color.primary)
+                            }
+                            .buttonStyle(.plain)
+                            .help(tpl.name)
+                        }
+                    }
+                    .padding(.vertical, 1)
+                }
+            } else if vm.inspirationCategoryTab == 1 {
+                // Tab 1: 6 款大师电影摄影机与光学镜头预设（点击自动替换提示词末尾的机身/镜头/柔光镜/胶片后缀）
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(CINEMA_CAMERA_PRESETS) { camera in
+                            let isSelected = vm.selectedCinemaCameraId == camera.id
+                            Button {
+                                vm.selectCinemaCamera(camera)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2.5) {
+                                    HStack(spacing: 4) {
+                                        Text(camera.shortName)
+                                            .font(.system(size: 11.5, weight: .semibold))
+                                            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                                        if isSelected {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .font(.system(size: 10.5))
+                                                .foregroundStyle(Color.accentColor)
+                                        }
+                                    }
+                                    Text("\(camera.sensor) · \(camera.lens)")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                    Text(camera.filter)
+                                        .font(.system(size: 9.5, design: .monospaced))
+                                        .foregroundStyle(isSelected ? Color.accentColor.opacity(0.9) : .secondary.opacity(0.75))
+                                        .lineLimit(1)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.045))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .strokeBorder(isSelected ? Color.accentColor.opacity(0.55) : palette.cardBorder, lineWidth: 0.8)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .help(camera.name)
+                        }
+                    }
+                    .padding(.vertical, 1)
+                }
+            } else {
+                // Tab 2: 10 种画风滤镜芯片 + 8 种电影运镜轨迹芯片
+                VStack(alignment: .leading, spacing: 6) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            Text(L("画风胶片", "Style"))
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.trailing, 2)
+                            ForEach(ART_STYLE_PRESETS) { style in
+                                let isSelected = vm.selectedArtStyleId == style.id
+                                Button {
+                                    vm.selectArtStyle(style)
+                                } label: {
+                                    Text(style.name)
+                                        .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 4.5)
+                                        .background(
+                                            Capsule()
+                                                .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.primary.opacity(0.05))
+                                        )
+                                        .overlay(
+                                            Capsule()
+                                                .strokeBorder(isSelected ? Color.accentColor.opacity(0.55) : palette.cardBorder, lineWidth: 0.8)
+                                        )
+                                        .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    if mod == .videoAudio || mod == .video || mod == .comfyUI {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                Text(L("电影运镜", "Motion"))
+                                    .font(.system(size: 10.5, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.trailing, 2)
+                                ForEach(CAMERA_MOTION_PRESETS) { motion in
+                                    let isSelected = vm.selectedCameraMotionId == motion.id
+                                    Button {
+                                        vm.selectCameraMotion(motion)
+                                    } label: {
+                                        Text(motion.name)
+                                            .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
+                                            .padding(.horizontal, 9)
+                                            .padding(.vertical, 4.5)
+                                            .background(
+                                                Capsule()
+                                                    .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.primary.opacity(0.05))
+                                            )
+                                            .overlay(
+                                                Capsule()
+                                                    .strokeBorder(isSelected ? Color.accentColor.opacity(0.55) : palette.cardBorder, lineWidth: 0.8)
+                                            )
+                                            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 9)
+                .fill(Color.primary.opacity(0.028))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 9)
+                .strokeBorder(palette.cardBorder.opacity(0.75), lineWidth: 0.7)
+        )
+    }
+
 
     func promptEditor(
         title: String,
