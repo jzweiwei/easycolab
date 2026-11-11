@@ -503,11 +503,11 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
         shortTitleZh: "H3 原生生图",
         shortTitleEn: "H3-Image",
         repoId: "MiniMaxAI/MiniMax-H3-Image",
-        badgeZh: "6 步蒸馏 · 新增约 68.6 GB",
-        badgeEn: "6-Step Distilled · +68.6 GB New",
-        summaryZh: "H3 家族文生图与改图合一，原生直出最高约 1600 万像素；与 H3 视频共用同一文本编码器，只需另下生图 DiT 与 VAE",
-        summaryEn: "H3-family text-to-image & editing in one, native output up to ~16 MP; shares the H3 video text encoder — only the image DiT & VAE are new downloads",
-        approxSizeGB: 68.6,
+        badgeZh: "6 步蒸馏 · 约 135 GB 自包含",
+        badgeEn: "6-Step Distilled · ~135 GB Self-Contained",
+        summaryZh: "H3 家族文生图与改图合一，原生直出最高约 1600 万像素；自带文本编码器，一次下载自包含，不需另下视频版",
+        summaryEn: "H3-family text-to-image & editing in one, native output up to ~16 MP; ships its own text encoder — one self-contained download, no video model needed",
+        approxSizeGB: 135.4,
         icon: "sparkles.rectangle.stack",
         modality: .image,
         defaultSteps: 6,
@@ -530,6 +530,7 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
             )
         ],
         defaultFiles: (1...12).map { ModelFileItem(name: String(format: "transformer/model-%05d-of-00012.safetensors", $0), desc: "生图 DiT 主干 BF16 \($0)/12", exists: false, size_gb: 0) }
+            + (1...14).map { ModelFileItem(name: String(format: "text_encoder/model-%05d-of-00014.safetensors", $0), desc: "多模态文本编码器 \($0)/14", exists: false, size_gb: 0) }
             + [
                 ModelFileItem(name: "vae/diffusion_pytorch_model.safetensors", desc: "图像 VAE (2.3 GB)", exists: false, size_gb: 0),
                 ModelFileItem(name: "pdd_fused_heads.safetensors", desc: "6 步蒸馏逐步输出头 (12 MB)", exists: false, size_gb: 0)

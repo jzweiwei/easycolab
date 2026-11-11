@@ -1328,6 +1328,10 @@ MINIMAX_H3_IMAGE_FILES = (
         for i in range(1, 13)
     ]
     + [
+        (f"text_encoder/model-{i:05d}-of-00014.safetensors", f"H3 多模态文本编码器 {i}/14 (生图仓库自带, 与视频版同一编码器)")
+        for i in range(1, 15)
+    ]
+    + [
         ("pdd_fused_heads.safetensors", "PDD 蒸馏输出头 (6 步各 1 个, 约 0.01 GB)"),
         ("pdd_config.json", "PDD 采样日程配置 (官方仓库文件)"),
         ("vae/diffusion_pytorch_model.safetensors", "图像 VAE 解码器 FP32 (约 2.34 GB)"),
@@ -1345,11 +1349,12 @@ MINIMAX_H3_IMAGE_FILES = (
         )
     ]
 )
-# 注: H3-Image 的 text_encoder 不在此清单中 —— 与视频版 MiniMax-H3 的
-# FL2VA/text_encoder 14 分片逐个比对完全一致, 运行时直接复用视频版已下载权重。
-# processor/ 与 pdd_config.json 按官方仓库文件清单一并下载到本地存储 (共 22 个文件),
-# 加载时优先以本地目录直供 DiffSynth 管线, 不再依赖加载时临时远程拉取
-# (2026-11-11 真机日志曾出现 processor 远程匹配 0 文件, 来源不确定故改本地直供)。
+# 注: text_encoder 按官方仓库清单包含在生图仓库自身 (text_encoder/ 14 分片,
+# 与视频版 FL2VA/text_encoder 逐个比对完全一致)。清单含编码器是刻意的自包含设计:
+# 点一次「下载权重」即下满生图所需的全部 36 个文件 (约 135 GB), 不强迫只用生图
+# 的用户再去下载 134 GB 的视频包 (初版曾如此设计, 被用户否掉)。已下视频版时
+# 加载仍可回退复用其编码器, 见加载分支。processor/ 与 pdd_config.json 同为官方
+# 仓库文件, 一并下载到本地存储, 加载时以本地目录直供 DiffSynth 管线。
 
 # ==============================================================================
 # 开源旗舰多模型注册中心 (Hugging Face Top Models 2026 · 全量免审核 Gated=False)
@@ -1370,8 +1375,8 @@ MODEL_CATALOG: Dict[str, Dict[str, Any]] = {
         "repo_id": "MiniMaxAI/MiniMax-H3-Image",
         "modality": "image",
         "pipeline_arch": "minimax_h3_image",
-        "category": "H3 家族文生图与参考图改图 · 蒸馏 6 步无 CFG · 原生约 1600 万像素直出 · 文本编码器与 H3 视频版共用不重复下载",
-        "approx_size_gb": 68.7,
+        "category": "H3 家族文生图与参考图改图 · 蒸馏 6 步无 CFG · 原生约 1600 万像素直出 · 自带文本编码器, 一次下载自包含",
+        "approx_size_gb": 135.4,
         "files": MINIMAX_H3_IMAGE_FILES,
     },
     "qwen38_27b": {
@@ -4133,19 +4138,26 @@ def load_model_to_vram_core(
                 ]
                 pdd_path = _resolve_and_stage_model_file(target_id, "pdd_fused_heads.safetensors")
                 vae_path = _resolve_and_stage_model_file(target_id, "vae/diffusion_pytorch_model.safetensors")
-                # 文本编码器与 H3 视频版逐分片完全一致: 直接复用 minimax_h3 已下载的
-                # FL2VA/text_encoder (DiffSynth 官方例同样以 MiniMax-H3:FL2VA/text_encoder 作为生图编码器来源)
-                te_rel_names = [f"FL2VA/text_encoder/model-{i:05d}-of-00014.safetensors" for i in range(1, 15)]
-                missing_te = [fn for fn in te_rel_names if not _find_existing_model_file("minimax_h3", fn)]
-                if missing_te:
-                    raise RuntimeError(
-                        "MiniMax-H3-Image 与视频版共用同一文本编码器, 但 MiniMax-H3 (视频) 的 "
-                        f"FL2VA/text_encoder 权重尚未下载完整 (缺 {len(missing_te)}/14 分片)。"
-                        "请先选择 MiniMax-H3 (33B) 点击「下载权重」, 再加载 MiniMax-H3-Image。"
-                    )
-                MODEL_DOWNLOAD_STATE["progress"] = 0.55
-                MODEL_DOWNLOAD_STATE["message"] = "正在复用 MiniMax-H3 视频版多模态文本编码器 (14 分片, 与生图版完全一致)..."
-                te_paths = [_resolve_and_stage_model_file("minimax_h3", fn) for fn in te_rel_names]
+                # 文本编码器: 生图仓库自带 text_encoder/ 14 分片 (与视频版 FL2VA 编码器
+                # 逐分片一致), 下载清单已包含, 优先用生图自带副本 (自包含, 一次点满);
+                # 旧版下载只有视频编码器时才回退复用, 不再强迫用户为生图去下整个视频包。
+                te_own = [f"text_encoder/model-{i:05d}-of-00014.safetensors" for i in range(1, 15)]
+                if all(_find_existing_model_file(target_id, fn) for fn in te_own):
+                    MODEL_DOWNLOAD_STATE["progress"] = 0.55
+                    MODEL_DOWNLOAD_STATE["message"] = "正在映射 MiniMax-H3-Image 自带多模态文本编码器 (14 分片)..."
+                    te_paths = [_resolve_and_stage_model_file(target_id, fn) for fn in te_own]
+                else:
+                    te_rel_names = [f"FL2VA/text_encoder/model-{i:05d}-of-00014.safetensors" for i in range(1, 15)]
+                    missing_te = [fn for fn in te_rel_names if not _find_existing_model_file("minimax_h3", fn)]
+                    if missing_te:
+                        raise RuntimeError(
+                            "MiniMax-H3-Image 的文本编码器尚未下载完整: 生图自带 text_encoder "
+                            f"与视频版 FL2VA/text_encoder 均不齐 (视频版缺 {len(missing_te)}/14 分片)。"
+                            "请对 MiniMax-H3-Image 点击「下载权重」一次下满 (已含编码器), 再加载。"
+                        )
+                    MODEL_DOWNLOAD_STATE["progress"] = 0.55
+                    MODEL_DOWNLOAD_STATE["message"] = "正在复用 MiniMax-H3 视频版多模态文本编码器 (14 分片, 与生图版完全一致)..."
+                    te_paths = [_resolve_and_stage_model_file("minimax_h3", fn) for fn in te_rel_names]
                 # 卸载策略照 DiffSynth 低显存官方例 (examples/minimax_h3_image/model_inference_low_vram):
                 # 编码器/VAE 用通用 vram_config 磁盘流式; DiT+PDD 头 BF16 常驻系统内存 (cpu_fast), 计算时逐层换入 GPU。
                 cpu_fast_vram_config = {
@@ -4191,14 +4203,15 @@ def load_model_to_vram_core(
                     processor_config=_processor_config,
                     vram_limit=vram_limit,
                 )
-                # 不预热 text_encoder/dit: 二者合计约 133GB, 全量预热会把 96GB 显存塞满,
-                # 推理无激活余量直接 OOM (2026-11-11 真机实测)。照官方低显存例走流式换入,
-                # 只预热 pdd_heads/vae 小件。视频版分支同样以 skip_preload_attrs 排除 dit。
+                # 预热策略与视频版分支对齐: 显存充裕时只排除 DiT (66GB, 必须逐层流式),
+                # text_encoder (66.7GB) 预热常驻——提示词编码不用再从磁盘流式读 66GB,
+                # 那正是初版全流式时生成迟迟不出图的主因; 二者全预热则会塞满 96GB
+                # 显存导致 OOM (2026-11-11 真机实测), 故 DiT 永远排除。
                 _enable_high_vram_optimizations(
                     new_pipe,
                     total_vram_gb=total_vram_gb,
                     preload_vram=True,
-                    skip_preload_attrs=("text_encoder", "dit"),
+                    skip_preload_attrs=("dit",) if free_before_gb >= 76.0 else ("text_encoder", "dit"),
                 )
                 mode_label = f"{spec['name']} · BF16 · 6步蒸馏"
 

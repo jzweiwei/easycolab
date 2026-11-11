@@ -375,11 +375,11 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
         nameZh: "MiniMax-H3-Image",
         nameEn: "MiniMax-H3-Image",
         repoId: "MiniMaxAI/MiniMax-H3-Image",
-        badgeZh: "文生图与改图 · 约 68.6 GB（复用 H3 视频编码器）",
-        badgeEn: "Text-to-Image & Edit · ~68.6 GB (shares H3 video encoder)",
-        summaryZh: "MiniMax H3 家族生图版：文生图与指令改图合一，蒸馏 6 步无 CFG，原生高像素直出；文本编码器与 MiniMax-H3 视频版共用，服务端只额外下载 DiT 与 VAE",
-        summaryEn: "Image member of the MiniMax H3 family: unified text-to-image & instruction editing, distilled 6-step no-CFG, native high-resolution output; shares its text encoder with MiniMax-H3 video, so the server only downloads the DiT and VAE",
-        approxSizeGB: 68.6,
+        badgeZh: "文生图与改图 · 约 135 GB（自带文本编码器）",
+        badgeEn: "Text-to-Image & Edit · ~135 GB (own text encoder included)",
+        summaryZh: "MiniMax H3 家族生图版：文生图与指令改图合一，蒸馏 6 步无 CFG，原生高像素直出；自带文本编码器，一次下载自包含，不需另下视频版",
+        summaryEn: "Image member of the MiniMax H3 family: unified text-to-image & instruction editing, distilled 6-step no-CFG, native high-resolution output; ships its own text encoder — one self-contained download, no video model needed",
+        approxSizeGB: 135.4,
         icon: "photo.artframe",
         modality: .image,
         defaultSteps: 6,
@@ -405,6 +405,13 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
             ModelFileItem(
                 name: String(format: "transformer/model-%05d-of-00012.safetensors", i),
                 desc: "生图 DiT 主干 BF16 \(i)/12",
+                exists: false,
+                size_gb: 0
+            )
+        } + (1...14).map { i in
+            ModelFileItem(
+                name: String(format: "text_encoder/model-%05d-of-00014.safetensors", i),
+                desc: "多模态文本编码器 \(i)/14",
                 exists: false,
                 size_gb: 0
             )
